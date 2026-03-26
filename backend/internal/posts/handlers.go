@@ -9,19 +9,30 @@ import (
 )
 
 // GetFeedPosts handles GET /api/posts
-// Returns all personal (non-group) posts with author info, likes, and comment count
+// Privacy is enforced in Go after fetching all posts:
+//   - public    → everyone sees it
+//   - followers → only accepted followers of the author see it
+//   - selected  → only users in post_selected_followers see it
 func GetFeedPosts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	userID, _ := utils.GetUserIDFromContext(r)
+	viewerID, _ := utils.GetUserIDFromContext(r)
 
-	rawPosts, err := queries.GetFeedPosts()
+	// 1. Fetch all personal posts (no privacy filter in SQL)
+	allPosts, err := queries.GetAllPersonalPosts()
 	if err != nil {
 		utils.RespondJSON(w, http.StatusInternalServerError, models.GenericResponse{
 			Success: false,
 			Message: "Failed to fetch posts",
 		})
 		return
+	}
+
+	// 2. Build a set of author IDs the viewer follows (for "followers" privacy)
+	followingIDs, _ := queries.GetFollowingIDs(viewerID)
+	followingSet := make(map[int]bool, len(followingIDs))
+	for _, id := range followingIDs {
+		followingSet[id] = true
 	}
 
 	type PostWithMeta struct {
@@ -32,8 +43,32 @@ func GetFeedPosts(w http.ResponseWriter, r *http.Request) {
 		CommentsCount int          `json:"comments_count"`
 	}
 
-	result := make([]PostWithMeta, 0, len(rawPosts))
-	for _, post := range rawPosts {
+	result := make([]PostWithMeta, 0)
+
+	for _, post := range allPosts {
+		// 3. Apply privacy rules in Go
+		switch post.Privacy {
+		case "public":
+			// visible to everyone — always include
+
+		case "followers":
+			// visible only to accepted followers of the author
+			if !followingSet[post.UserID] {
+				continue
+			}
+
+		case "selected":
+			// visible only to users in the post's selected-followers list
+			ok, _ := queries.IsInSelectedFollowers(post.ID, viewerID)
+			if !ok {
+				continue
+			}
+
+		default:
+			continue
+		}
+
+		// 4. Attach author, likes, comment count
 		author, err := queries.GetUserByID(post.UserID)
 		if err != nil {
 			continue
@@ -41,8 +76,8 @@ func GetFeedPosts(w http.ResponseWriter, r *http.Request) {
 
 		likesCount, _ := queries.GetPostLikesCount(post.ID)
 		isLiked := false
-		if userID != 0 {
-			isLiked, _ = queries.IsPostLikedByUser(post.ID, userID)
+		if viewerID != 0 {
+			isLiked, _ = queries.IsPostLikedByUser(post.ID, viewerID)
 		}
 		commentsCount, _ := queries.GetCommentCount(post.ID)
 

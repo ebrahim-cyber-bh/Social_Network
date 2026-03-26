@@ -2,20 +2,21 @@ package queries
 
 import "backend/internal/models"
 
-// GetFeedPosts retrieves all personal (non-group) public posts, newest first
-func GetFeedPosts() ([]models.Post, error) {
+// GetAllPersonalPosts fetches all non-group posts, newest first.
+// Privacy filtering is handled in the application layer (see posts/handlers.go).
+func GetAllPersonalPosts() ([]models.Post, error) {
 	rows, err := DB.Query(`
 		SELECT
-			id,
-			user_id,
-			group_id,
-			content,
-			COALESCE(image_path, '') as image_path,
-			COALESCE(privacy, 'public') as privacy,
-			created_at
-		FROM posts
-		WHERE group_id IS NULL
-		ORDER BY created_at DESC
+			p.id,
+			p.user_id,
+			p.group_id,
+			p.content,
+			COALESCE(p.image_path, '') AS image_path,
+			COALESCE(p.privacy, 'public')  AS privacy,
+			p.created_at
+		FROM posts p
+		WHERE p.group_id IS NULL
+		ORDER BY p.created_at DESC
 	`)
 	if err != nil {
 		return nil, err
@@ -24,31 +25,38 @@ func GetFeedPosts() ([]models.Post, error) {
 
 	var posts []models.Post
 	for rows.Next() {
-		var post models.Post
+		var p models.Post
 		if err := rows.Scan(
-			&post.ID,
-			&post.UserID,
-			&post.GroupID,
-			&post.Content,
-			&post.ImagePath,
-			&post.Privacy,
-			&post.CreatedAt,
+			&p.ID, &p.UserID, &p.GroupID,
+			&p.Content, &p.ImagePath, &p.Privacy, &p.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
-		posts = append(posts, post)
+		posts = append(posts, p)
 	}
 	return posts, rows.Err()
 }
 
-// CreatePost creates a new personal post (no group)
-// Returns the new post ID
+// IsInSelectedFollowers returns true when userID is in the selected-followers
+// list for the given post.
+func IsInSelectedFollowers(postID int64, userID int) (bool, error) {
+	var exists bool
+	err := DB.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM post_selected_followers
+			WHERE post_id = ? AND user_id = ?
+		)
+	`, postID, userID).Scan(&exists)
+	return exists, err
+}
+
+// CreatePost creates a new personal post (no group).
+// Returns the new post ID.
 func CreatePost(userID int, content string, imagePath *string, privacy string) (int64, error) {
 	var imageVal interface{}
 	if imagePath != nil {
 		imageVal = *imagePath
 	}
-
 	result, err := DB.Exec(`
 		INSERT INTO posts (user_id, content, image_path, privacy)
 		VALUES (?, ?, ?, ?)
@@ -59,10 +67,11 @@ func CreatePost(userID int, content string, imagePath *string, privacy string) (
 	return result.LastInsertId()
 }
 
-// UpdatePost updates content and privacy of a post
+// UpdatePost updates content and privacy of a post.
 func UpdatePost(postID int64, content string, privacy string) error {
-	_, err := DB.Exec(`
-		UPDATE posts SET content = ?, privacy = ? WHERE id = ?
-	`, content, privacy, postID)
+	_, err := DB.Exec(
+		`UPDATE posts SET content = ?, privacy = ? WHERE id = ?`,
+		content, privacy, postID,
+	)
 	return err
 }

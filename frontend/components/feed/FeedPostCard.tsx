@@ -1,7 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { Heart, MessageCircle, Trash2, Pencil, Globe, Users, Lock, X, Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Heart,
+  MessageCircle,
+  Share2,
+  Trash2,
+  Pencil,
+  Globe,
+  Users,
+  Lock,
+  X,
+  Check,
+  MoreHorizontal,
+} from "lucide-react";
 import { API_URL } from "@/lib/config";
 import {
   toggleLike,
@@ -20,40 +32,39 @@ interface Props {
   onUpdated: (id: number, content: string, privacy: string) => void;
 }
 
-const PRIVACY_ICONS: Record<string, React.ReactNode> = {
-  public: <Globe className="w-3 h-3" />,
-  followers: <Users className="w-3 h-3" />,
-  selected: <Lock className="w-3 h-3" />,
+const PRIVACY_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
+  public: { label: "Public", icon: <Globe className="w-3 h-3" /> },
+  followers: { label: "Private", icon: <Users className="w-3 h-3" /> },
+  selected: { label: "Close Friends", icon: <Lock className="w-3 h-3" /> },
 };
 
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated }: Props) {
   const isOwner = post.user_id === currentUserId;
 
-  // Like state
   const [likes, setLikes] = useState(post.likes);
   const [isLiked, setIsLiked] = useState(post.is_liked);
   const [likeLoading, setLikeLoading] = useState(false);
 
-  // Delete state
-  const [deleting, setDeleting] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Edit state
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
-  const [editPrivacy, setEditPrivacy] = useState(post.privacy);
+  const [editPrivacy, setEditPrivacy] = useState<"public" | "followers" | "selected">(post.privacy);
   const [editLoading, setEditLoading] = useState(false);
 
-  // Comments state
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState<PostComment[]>([]);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
@@ -61,34 +72,43 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
   const [newComment, setNewComment] = useState("");
   const [commentLoading, setCommentLoading] = useState(false);
 
+  // Close menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const handleLike = async () => {
     if (likeLoading) return;
     setLikeLoading(true);
-    // Optimistic update
-    setIsLiked((prev) => !prev);
-    setLikes((prev) => (isLiked ? prev - 1 : prev + 1));
+    const prevLiked = isLiked;
+    const prevCount = likes;
+    setIsLiked(!prevLiked);
+    setLikes(prevLiked ? prevCount - 1 : prevCount + 1);
     try {
       const res = await toggleLike(post.id);
       setIsLiked(res.liked);
       setLikes(res.likes);
     } catch {
-      // Revert on failure
-      setIsLiked((prev) => !prev);
-      setLikes((prev) => (isLiked ? prev + 1 : prev - 1));
+      setIsLiked(prevLiked);
+      setLikes(prevCount);
     } finally {
       setLikeLoading(false);
     }
   };
 
   const handleDelete = async () => {
+    setMenuOpen(false);
     if (!confirm("Delete this post?")) return;
-    setDeleting(true);
     try {
       await deletePost(post.id);
       onDeleted(post.id);
-    } catch {
-      setDeleting(false);
-    }
+    } catch {}
   };
 
   const handleEditSave = async () => {
@@ -99,7 +119,6 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
       onUpdated(post.id, editContent.trim(), editPrivacy);
       setEditing(false);
     } catch {
-      // keep editing open on failure
     } finally {
       setEditLoading(false);
     }
@@ -122,77 +141,91 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
     setCommentLoading(true);
     try {
       await addComment(post.id, newComment.trim());
-      // Reload comments
       const data = await getComments(post.id);
       setComments(data);
       setCommentsCount((prev) => prev + 1);
       setNewComment("");
-    } catch {} finally {
+    } catch {
+    } finally {
       setCommentLoading(false);
     }
   };
 
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      await navigator.share({ text: post.content, url });
+    } else {
+      await navigator.clipboard.writeText(url);
+    }
+  };
+
   const author = post.author;
-  const authorName = author
-    ? `${author.firstName} ${author.lastName}`
-    : "Unknown";
-  const authorAvatar = author?.avatar;
+  const authorName = author ? `${author.firstName} ${author.lastName}` : "Unknown";
+  const privacy = PRIVACY_LABELS[post.privacy] ?? PRIVACY_LABELS.public;
 
   return (
-    <div className="border border-border rounded-lg bg-background overflow-hidden">
-      {/* Header */}
-      <div className="flex items-start gap-3 p-4">
-        <div className="shrink-0">
-          {authorAvatar ? (
-            <img
-              src={`${API_URL}${authorAvatar}`}
-              alt={authorName}
-              className="w-10 h-10 rounded-full object-cover"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center border border-border text-foreground/60 font-semibold text-sm">
-              {authorName[0]}
-            </div>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-sm text-foreground">{authorName}</span>
-            {author?.username && (
-              <span className="text-xs text-foreground/40">@{author.username}</span>
+    <div className="bg-background border border-border rounded-xl overflow-hidden shadow-sm">
+      {/* ── Header ── */}
+      <div className="p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="shrink-0">
+            {author?.avatar ? (
+              <img
+                src={`${API_URL}${author.avatar}`}
+                alt={authorName}
+                className="w-10 h-10 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center border border-border font-semibold text-sm text-foreground/60">
+                {authorName[0]}
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-1 text-xs text-foreground/40 mt-0.5">
-            {PRIVACY_ICONS[post.privacy]}
-            <span>{formatDate(post.created_at)}</span>
+          <div>
+            <p className="font-semibold text-sm text-foreground">{authorName}</p>
+            <div className="flex items-center gap-1 text-[10px] text-foreground/40 font-semibold uppercase tracking-wider mt-0.5">
+              <span>{timeAgo(post.created_at)}</span>
+              <span>·</span>
+              {privacy.icon}
+              <span>{privacy.label}</span>
+            </div>
           </div>
         </div>
 
-        {/* Owner actions */}
+        {/* Three-dot menu (owner only) */}
         {isOwner && !editing && (
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="relative" ref={menuRef}>
             <button
-              onClick={() => setEditing(true)}
-              className="p-1.5 rounded-md hover:bg-foreground/5 text-foreground/40 hover:text-foreground transition-colors"
+              onClick={() => setMenuOpen((o) => !o)}
+              className="p-1.5 rounded-full hover:bg-foreground/5 text-foreground/40 hover:text-foreground transition-colors"
             >
-              <Pencil className="w-3.5 h-3.5" />
+              <MoreHorizontal className="w-5 h-5" />
             </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="p-1.5 rounded-md hover:bg-red-500/10 text-foreground/40 hover:text-red-500 transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-8 w-36 bg-background border border-border rounded-xl shadow-xl z-20 overflow-hidden">
+                <button
+                  onClick={() => { setEditing(true); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-foreground/70 hover:bg-foreground/5 transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/5 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Content / Edit mode */}
-      <div className="px-4 pb-3">
+      {/* ── Content / Edit mode ── */}
+      <div className="px-4 pb-4">
         {editing ? (
-          <div className="flex flex-col gap-2">
+          <div className="space-y-2">
             <textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
@@ -203,80 +236,91 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
             <div className="flex items-center gap-2">
               <select
                 value={editPrivacy}
-                onChange={(e) => setEditPrivacy(e.target.value)}
-                className="text-xs bg-foreground/5 border border-border rounded px-2 py-1 text-foreground focus:outline-none"
+                onChange={(e) => setEditPrivacy(e.target.value as "public" | "followers" | "selected")}
+                className="text-xs bg-foreground/5 border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none"
               >
-                <option value="public">Everyone</option>
-                <option value="followers">Followers</option>
-                <option value="selected">Only me</option>
+                <option value="public">Public</option>
+                <option value="followers">Private</option>
+                <option value="selected">Close Friends</option>
               </select>
               <div className="flex-1" />
               <button
                 onClick={() => setEditing(false)}
-                className="p-1 rounded hover:bg-foreground/5 text-foreground/40"
+                className="p-1.5 rounded-lg hover:bg-foreground/5 text-foreground/40"
               >
                 <X className="w-4 h-4" />
               </button>
               <button
                 onClick={handleEditSave}
                 disabled={editLoading || !editContent.trim()}
-                className="p-1 rounded hover:bg-green-500/10 text-green-600 disabled:opacity-40"
+                className="p-1.5 rounded-lg hover:bg-green-500/10 text-green-600 disabled:opacity-40"
               >
                 <Check className="w-4 h-4" />
               </button>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-foreground whitespace-pre-wrap">{post.content}</p>
+          <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+            {post.content}
+          </p>
         )}
       </div>
 
-      {/* Image */}
+      {/* ── Post image ── */}
       {post.image_path && !editing && (
-        <div className="px-4 pb-3">
+        <div className="aspect-video bg-foreground/5">
           <img
             src={`${API_URL}${post.image_path}`}
             alt="post"
             loading="lazy"
-            className="w-full max-h-96 object-cover rounded-lg border border-border"
+            className="w-full h-full object-cover"
           />
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-1 px-3 py-2 border-t border-border">
+      {/* ── Action bar ── */}
+      <div className="p-3 border-t border-border flex items-center gap-4">
         <button
           onClick={handleLike}
           disabled={likeLoading}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-            isLiked
-              ? "text-red-500 bg-red-500/10"
-              : "text-foreground/60 hover:bg-foreground/5 hover:text-foreground"
+          className={`flex items-center gap-1.5 text-sm transition-colors ${
+            isLiked ? "text-red-500" : "text-foreground/50 hover:text-red-500"
           }`}
         >
-          <Heart className={`w-4 h-4 ${isLiked ? "fill-current" : ""}`} />
+          <Heart className={`w-5 h-5 ${isLiked ? "fill-current" : ""}`} />
           <span>{likes}</span>
         </button>
 
         <button
           onClick={handleToggleComments}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-foreground/60 hover:bg-foreground/5 hover:text-foreground transition-colors"
+          className="flex items-center gap-1.5 text-sm text-foreground/50 hover:text-primary transition-colors"
         >
-          <MessageCircle className="w-4 h-4" />
+          <MessageCircle className="w-5 h-5" />
           <span>{commentsCount}</span>
+        </button>
+
+        <button
+          onClick={handleShare}
+          className="flex items-center gap-1.5 text-sm text-foreground/50 hover:text-primary transition-colors ml-auto"
+        >
+          <Share2 className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Comments section */}
+      {/* ── Comments ── */}
       {showComments && (
         <div className="border-t border-border px-4 py-3 space-y-3">
           {comments.length === 0 && (
-            <p className="text-xs text-foreground/40 text-center py-2">No comments yet</p>
+            <p className="text-xs text-foreground/30 text-center py-2">
+              No comments yet
+            </p>
           )}
 
           {comments.map((c) => {
             const cAuthor = c.author;
-            const cName = cAuthor ? `${cAuthor.firstName} ${cAuthor.lastName}` : "User";
+            const cName = cAuthor
+              ? `${cAuthor.firstName} ${cAuthor.lastName}`
+              : "User";
             return (
               <div key={c.id} className="flex gap-2">
                 <div className="shrink-0">
@@ -292,30 +336,36 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
                     </div>
                   )}
                 </div>
-                <div className="flex-1 bg-foreground/5 rounded-lg px-3 py-2">
-                  <span className="text-xs font-semibold text-foreground">{cName} </span>
-                  <span className="text-xs text-foreground/40">· {formatDate(c.created_at)}</span>
-                  <p className="text-sm text-foreground mt-0.5">{c.content}</p>
+                <div className="flex-1 bg-foreground/5 rounded-xl px-3 py-2">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-xs font-semibold text-foreground">
+                      {cName}
+                    </span>
+                    <span className="text-[10px] text-foreground/30">
+                      · {timeAgo(c.created_at)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-foreground/80">{c.content}</p>
                 </div>
               </div>
             );
           })}
 
           {/* Add comment */}
-          <form onSubmit={handleAddComment} className="flex gap-2">
+          <form onSubmit={handleAddComment} className="flex gap-2 pt-1">
             <input
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
               placeholder="Write a comment..."
               maxLength={300}
-              className="flex-1 bg-foreground/5 border border-transparent focus:border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+              className="flex-1 bg-foreground/5 rounded-full px-4 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none border border-transparent focus:border-border"
             />
             <button
               type="submit"
               disabled={!newComment.trim() || commentLoading}
-              className="px-3 py-1.5 rounded-lg bg-foreground text-background text-sm font-medium disabled:opacity-40 hover:opacity-80 transition-opacity"
+              className="px-4 py-2 rounded-full bg-primary text-white text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
-              Send
+              Post
             </button>
           </form>
         </div>

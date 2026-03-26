@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImagePlus, X, Globe, Users, Lock } from "lucide-react";
+import { Image as ImageIcon, X, Globe, Users, Lock, ChevronDown } from "lucide-react";
 import { API_URL } from "@/lib/config";
 import { createPost } from "@/lib/posts";
 import type { User } from "@/lib/interfaces";
@@ -12,9 +12,9 @@ interface Props {
 }
 
 const PRIVACY_OPTIONS = [
-  { value: "public", label: "Everyone", icon: Globe },
-  { value: "followers", label: "Followers", icon: Users },
-  { value: "selected", label: "Only me", icon: Lock },
+  { value: "public", label: "Public", icon: Globe },
+  { value: "followers", label: "Private", icon: Users },
+  { value: "selected", label: "Close Friends", icon: Lock },
 ];
 
 export default function CreatePost({ user, onPostCreated }: Props) {
@@ -24,7 +24,11 @@ export default function CreatePost({ user, onPostCreated }: Props) {
   const [preview, setPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const currentPrivacy = PRIVACY_OPTIONS.find((o) => o.value === privacy)!;
+  const PrivacyIcon = currentPrivacy.icon;
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -56,11 +60,8 @@ export default function CreatePost({ user, onPostCreated }: Props) {
     }
   };
 
-  const currentPrivacy = PRIVACY_OPTIONS.find((o) => o.value === privacy)!;
-  const PrivacyIcon = currentPrivacy.icon;
-
   return (
-    <div className="border border-border rounded-lg bg-background p-4">
+    <div className="bg-background border border-border rounded-xl p-4 shadow-sm">
       <form onSubmit={handleSubmit}>
         <div className="flex gap-3">
           {/* Avatar */}
@@ -72,54 +73,57 @@ export default function CreatePost({ user, onPostCreated }: Props) {
                 className="w-10 h-10 rounded-full object-cover"
               />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center border border-border text-foreground/60 font-semibold text-sm">
+              <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center border border-border font-semibold text-sm text-foreground/60">
                 {user.firstName[0]}
               </div>
             )}
           </div>
 
-          {/* Input */}
-          <div className="flex-1 flex flex-col gap-3">
+          {/* Input area */}
+          <div className="flex-1 min-w-0">
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={`What's on your mind, ${user.firstName}?`}
-              rows={3}
+              rows={2}
               maxLength={500}
-              className="w-full resize-none bg-foreground/5 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-foreground/40 border border-transparent focus:border-border focus:outline-none"
+              className="w-full resize-none bg-transparent text-sm text-foreground placeholder:text-foreground/40 border-none focus:outline-none focus:ring-0"
             />
 
             {/* Image preview */}
             {preview && (
-              <div className="relative w-fit">
+              <div className="relative w-fit mt-2">
                 <img
                   src={preview}
                   alt="preview"
-                  className="max-h-48 rounded-lg object-cover border border-border"
+                  className="max-h-40 rounded-lg object-cover border border-border"
                 />
                 <button
                   type="button"
                   onClick={removeImage}
-                  className="absolute top-1 right-1 bg-background/80 rounded-full p-0.5 hover:bg-background border border-border"
+                  className="absolute top-1 right-1 bg-background/90 rounded-full p-0.5 border border-border hover:bg-background"
                 >
-                  <X className="w-3.5 h-3.5 text-foreground" />
+                  <X className="w-3 h-3 text-foreground" />
                 </button>
               </div>
             )}
 
-            {error && <p className="text-xs text-red-500">{error}</p>}
+            {error && (
+              <p className="text-xs text-red-500 mt-1">{error}</p>
+            )}
 
-            {/* Actions row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            {/* Divider */}
+            <div className="border-t border-border mt-3 pt-3 flex items-center justify-between">
+              {/* Left actions */}
+              <div className="flex items-center gap-1">
                 {/* Image upload */}
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-foreground/5"
+                  className="p-2 text-foreground/40 hover:text-primary rounded-full transition-colors"
+                  title="Add photo"
                 >
-                  <ImagePlus className="w-4 h-4" />
-                  Photo
+                  <ImageIcon className="w-5 h-5" />
                 </button>
                 <input
                   ref={fileRef}
@@ -129,35 +133,54 @@ export default function CreatePost({ user, onPostCreated }: Props) {
                   onChange={handleImageChange}
                 />
 
-                {/* Privacy selector */}
+                {/* Privacy dropdown */}
                 <div className="relative">
-                  <select
-                    value={privacy}
-                    onChange={(e) => setPrivacy(e.target.value)}
-                    className="appearance-none flex items-center gap-1.5 text-xs text-foreground/60 hover:text-foreground bg-transparent pl-6 pr-2 py-1 rounded-md hover:bg-foreground/5 cursor-pointer focus:outline-none"
+                  <button
+                    type="button"
+                    onClick={() => setPrivacyOpen((o) => !o)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-foreground/60 bg-foreground/5 dark:bg-foreground/10 rounded-full hover:bg-foreground/10 transition-colors"
                   >
-                    {PRIVACY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <PrivacyIcon className="w-3.5 h-3.5 text-foreground/60 absolute left-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <PrivacyIcon className="w-3.5 h-3.5" />
+                    {currentPrivacy.label}
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+
+                  {privacyOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-40 bg-background border border-border rounded-xl shadow-xl z-20 overflow-hidden">
+                      {PRIVACY_OPTIONS.map((opt) => {
+                        const Icon = opt.icon;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              setPrivacy(opt.value);
+                              setPrivacyOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-2 px-4 py-2.5 text-xs text-left hover:bg-foreground/5 transition-colors ${
+                              privacy === opt.value
+                                ? "text-primary font-medium"
+                                : "text-foreground/70"
+                            }`}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-foreground/40">
-                  {content.length}/500
-                </span>
-                <button
-                  type="submit"
-                  disabled={!content.trim() || submitting}
-                  className="px-4 py-1.5 rounded-lg bg-foreground text-background text-sm font-medium disabled:opacity-40 hover:opacity-80 transition-opacity"
-                >
-                  {submitting ? "Posting..." : "Post"}
-                </button>
-              </div>
+              {/* Post button */}
+              <button
+                type="submit"
+                disabled={!content.trim() || submitting}
+                className="bg-primary text-white px-5 py-1.5 rounded-full text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                {submitting ? "Posting..." : "Post"}
+              </button>
             </div>
           </div>
         </div>
