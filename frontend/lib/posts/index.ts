@@ -31,6 +31,13 @@ export interface PostComment {
   author?: PostAuthor;
 }
 
+export async function getPost(postId: number): Promise<FeedPost> {
+  const res = await fetch(`${API_URL}/api/posts/${postId}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Post not found");
+  const data = await res.json();
+  return data.post;
+}
+
 export async function getFeedPosts(): Promise<FeedPost[]> {
   const res = await fetch(`${API_URL}/api/posts`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch posts");

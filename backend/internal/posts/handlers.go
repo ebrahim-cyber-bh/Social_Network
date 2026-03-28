@@ -99,6 +99,85 @@ func GetFeedPosts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetPost handles GET /api/posts/{id}
+func GetPost(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	viewerID, _ := utils.GetUserIDFromContext(r)
+
+	postIDStr := r.PathValue("id")
+	postID, err := strconv.ParseInt(postIDStr, 10, 64)
+	if err != nil {
+		utils.RespondJSON(w, http.StatusBadRequest, models.GenericResponse{Success: false, Message: "Invalid post ID"})
+		return
+	}
+
+	post, err := queries.GetPostByID(postID)
+	if err != nil {
+		utils.RespondJSON(w, http.StatusNotFound, models.GenericResponse{Success: false, Message: "Post not found"})
+		return
+	}
+
+	// Privacy check
+	if post.UserID != viewerID {
+		switch post.Privacy {
+		case "public":
+			// ok
+		case "followers":
+			followingIDs, _ := queries.GetFollowingIDs(viewerID)
+			followingSet := make(map[int]bool, len(followingIDs))
+			for _, id := range followingIDs {
+				followingSet[id] = true
+			}
+			if !followingSet[post.UserID] {
+				utils.RespondJSON(w, http.StatusForbidden, models.GenericResponse{Success: false, Message: "Access denied"})
+				return
+			}
+		case "selected":
+			ok, _ := queries.IsInSelectedFollowers(postID, viewerID)
+			if !ok {
+				utils.RespondJSON(w, http.StatusForbidden, models.GenericResponse{Success: false, Message: "Access denied"})
+				return
+			}
+		default:
+			utils.RespondJSON(w, http.StatusForbidden, models.GenericResponse{Success: false, Message: "Access denied"})
+			return
+		}
+	}
+
+	author, err := queries.GetUserByID(post.UserID)
+	if err != nil {
+		utils.RespondJSON(w, http.StatusInternalServerError, models.GenericResponse{Success: false, Message: "Failed to fetch author"})
+		return
+	}
+
+	likesCount, _ := queries.GetPostLikesCount(postID)
+	isLiked := false
+	if viewerID != 0 {
+		isLiked, _ = queries.IsPostLikedByUser(postID, viewerID)
+	}
+	commentsCount, _ := queries.GetCommentCount(postID)
+
+	type PostWithMeta struct {
+		models.Post
+		Author        *models.User `json:"author"`
+		Likes         int          `json:"likes"`
+		IsLiked       bool         `json:"is_liked"`
+		CommentsCount int          `json:"comments_count"`
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"post": PostWithMeta{
+			Post:          post,
+			Author:        &author,
+			Likes:         likesCount,
+			IsLiked:       isLiked,
+			CommentsCount: commentsCount,
+		},
+	})
+}
+
 // CreatePost handles POST /api/posts
 // Accepts multipart form: content, privacy (public|followers|selected), image (optional)
 func CreatePost(w http.ResponseWriter, r *http.Request) {

@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
-  Heart, MessageCircle, Share2, Trash2, Pencil,
+  Heart, MessageSquare, Share2, Trash2, Pencil,
   Globe, Users, Lock, X, MoreHorizontal, ChevronDown, AlertTriangle,
 } from "lucide-react";
 import { API_URL } from "@/lib/config";
 import {
-  toggleLike, deletePost, updatePost, getComments, addComment,
-  type FeedPost, type PostComment,
+  toggleLike, deletePost, updatePost,
+  type FeedPost,
 } from "@/lib/posts";
 
 interface Props {
@@ -45,10 +46,12 @@ function timeAgo(dateStr: string) {
 
 export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated }: Props) {
   const isOwner = post.user_id === currentUserId;
+  const router = useRouter();
 
   const [likes, setLikes] = useState(post.likes);
   const [isLiked, setIsLiked] = useState(post.is_liked);
   const [likeLoading, setLikeLoading] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -65,12 +68,7 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
   const privacyBtnRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState<PostComment[]>([]);
-  const [commentsLoaded, setCommentsLoaded] = useState(false);
-  const [commentsCount, setCommentsCount] = useState(post.comments_count);
-  const [newComment, setNewComment] = useState("");
-  const [commentLoading, setCommentLoading] = useState(false);
+  const [commentsCount] = useState(post.comments_count);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -150,31 +148,6 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
     setEditing(false);
   };
 
-  const handleToggleComments = async () => {
-    if (!showComments && !commentsLoaded) {
-      try {
-        setComments(await getComments(post.id));
-        setCommentsLoaded(true);
-      } catch {}
-    }
-    setShowComments((prev) => !prev);
-  };
-
-  const handleAddComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim() || commentLoading) return;
-    setCommentLoading(true);
-    try {
-      await addComment(post.id, newComment.trim());
-      setComments(await getComments(post.id));
-      setCommentsCount((prev) => prev + 1);
-      setNewComment("");
-    } catch {
-    } finally {
-      setCommentLoading(false);
-    }
-  };
-
   const handleShare = async () => {
     const url = window.location.href;
     if (navigator.share) await navigator.share({ text: post.content, url });
@@ -189,10 +162,13 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
 
   return (
     <>
-      <div className="bg-background border border-border rounded-xl overflow-hidden shadow-sm">
+      <div
+        className="bg-surface border border-border rounded-xl overflow-hidden cursor-pointer"
+        onClick={() => router.push(`/posts/${post.author?.username ?? post.user_id}/${post.id}`)}
+      >
 
         {/* ── Header ── */}
-        <div className="p-4 flex items-center justify-between">
+        <div className="p-4 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-3">
             <div className="shrink-0">
               {author?.avatar ? (
@@ -290,42 +266,43 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
             </div>
           </div>
         ) : (
-          post.content && (
-            <div className="px-4 pb-4">
+          <div className="px-4 pb-4 min-h-[56px] w-full">
+            {post.content && (
               <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap break-words">
                 {post.content}
               </p>
-            </div>
-          )
+            )}
+          </div>
         )}
 
         {/* ── Post image ── */}
         {post.image_path && !editing && (
-          <div className="aspect-video bg-foreground/5">
+          <div
+            className="bg-foreground/5 cursor-zoom-in"
+            onClick={(e) => { e.stopPropagation(); setLightbox(true); }}
+          >
             <img src={`${API_URL}${post.image_path}`} alt="post" loading="lazy"
-              className="w-full h-full object-cover" />
+              className="w-full object-contain max-h-96" />
           </div>
         )}
 
         {/* ── Action bar ── */}
         {!editing && (
-          <div className="p-3 border-t border-border flex items-center gap-4">
+          <div className="p-3 border-t border-border flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={handleLike}
               disabled={likeLoading}
-              className={`flex items-center gap-1.5 text-sm transition-colors ${
-                isLiked ? "text-red-500" : "text-foreground/50 hover:text-red-500"
-              }`}
+              className="flex items-center gap-2 text-muted hover:text-primary transition-colors group disabled:opacity-50"
             >
-              <Heart className={`w-5 h-5 ${isLiked ? "fill-current" : ""}`} />
-              <span>{likes}</span>
+              <Heart className={`w-5 h-5 transition-all ${isLiked ? "fill-primary text-primary" : "group-hover:scale-110"}`} />
+              <span className="text-xs font-bold">{likes > 0 ? likes : ""}</span>
             </button>
             <button
-              onClick={handleToggleComments}
-              className="flex items-center gap-1.5 text-sm text-foreground/50 hover:text-primary transition-colors"
+              onClick={() => { sessionStorage.setItem("focusComment", "1"); router.push(`/posts/${post.author?.username ?? post.user_id}/${post.id}`); }}
+              className="flex items-center gap-2 text-muted hover:text-primary transition-colors group"
             >
-              <MessageCircle className="w-5 h-5" />
-              <span>{commentsCount}</span>
+              <MessageSquare className="w-5 h-5 group-hover:scale-110 transition-transform" />
+              <span className="text-xs font-bold">{commentsCount > 0 ? commentsCount : "0"}</span>
             </button>
             <button
               onClick={handleShare}
@@ -336,55 +313,6 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
           </div>
         )}
 
-        {/* ── Comments ── */}
-        {showComments && !editing && (
-          <div className="border-t border-border px-4 py-3 space-y-3">
-            {comments.length === 0 && (
-              <p className="text-xs text-foreground/30 text-center py-2">No comments yet</p>
-            )}
-            {comments.map((c) => {
-              const cAuthor = c.author;
-              const cName = cAuthor ? `${cAuthor.firstName} ${cAuthor.lastName}` : "User";
-              return (
-                <div key={c.id} className="flex gap-2">
-                  <div className="shrink-0">
-                    {cAuthor?.avatar ? (
-                      <img src={`${API_URL}${cAuthor.avatar}`} alt={cName}
-                        className="w-7 h-7 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-7 h-7 rounded-full bg-foreground/10 flex items-center justify-center text-xs font-semibold text-foreground/60 border border-border">
-                        {cName[0]}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 bg-foreground/5 rounded-xl px-3 py-2">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-xs font-semibold text-foreground">{cName}</span>
-                      <span className="text-[10px] text-foreground/30">· {timeAgo(c.created_at)}</span>
-                    </div>
-                    <p className="text-sm text-foreground/80 break-words">{c.content}</p>
-                  </div>
-                </div>
-              );
-            })}
-            <form onSubmit={handleAddComment} className="flex gap-2 pt-1">
-              <input
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Write a comment..."
-                maxLength={300}
-                className="flex-1 bg-foreground/5 rounded-full px-4 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none border border-transparent focus:border-border"
-              />
-              <button
-                type="submit"
-                disabled={!newComment.trim() || commentLoading}
-                className="px-4 py-2 rounded-full bg-primary text-white text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
-              >
-                Post
-              </button>
-            </form>
-          </div>
-        )}
       </div>
 
       {/* ── Privacy dropdown portal (escapes overflow:hidden) ── */}
@@ -461,6 +389,22 @@ export default function FeedPostCard({ post, currentUserId, onDeleted, onUpdated
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Image lightbox ── */}
+      {lightbox && post.image_path && typeof window !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm cursor-zoom-out"
+          onClick={() => setLightbox(false)}
+        >
+          <img
+            src={`${API_URL}${post.image_path}`}
+            alt="full"
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>,
+        document.body
       )}
     </>
   );

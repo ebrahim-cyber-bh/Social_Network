@@ -1,8 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Image as ImageIcon, X, Globe, Users, Lock, ChevronDown } from "lucide-react";
-import { API_URL } from "@/lib/config";
+import { Send, Image as ImageIcon, X, Globe, Users, Lock, ChevronDown } from "lucide-react";
 import { createPost } from "@/lib/posts";
 import type { User } from "@/lib/interfaces";
 
@@ -12,20 +11,20 @@ interface Props {
 }
 
 const PRIVACY_OPTIONS = [
-  { value: "public", label: "Public", icon: Globe },
-  { value: "followers", label: "Private", icon: Users },
-  { value: "selected", label: "Close Friends", icon: Lock },
+  { value: "public",    label: "Public",        icon: Globe  },
+  { value: "followers", label: "Private",       icon: Users  },
+  { value: "selected",  label: "Close Friends", icon: Lock   },
 ];
 
 export default function CreatePost({ user, onPostCreated }: Props) {
-  const [content, setContent] = useState("");
-  const [privacy, setPrivacy] = useState("public");
-  const [image, setImage] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [content, setContent]     = useState("");
+  const [privacy, setPrivacy]     = useState("public");
+  const [image, setImage]         = useState<File | null>(null);
+  const [preview, setPreview]     = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]         = useState<string | null>(null);
   const [privacyOpen, setPrivacyOpen] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef     = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -51,9 +50,8 @@ export default function CreatePost({ user, onPostCreated }: Props) {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!content.trim() && !image) return;
+  const handleSubmit = async () => {
+    if ((!content.trim() && !image) || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -68,132 +66,120 @@ export default function CreatePost({ user, onPostCreated }: Props) {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
   return (
-    <div className="bg-background border border-border rounded-xl p-4 shadow-sm">
-      <form onSubmit={handleSubmit}>
-        <div className="flex gap-3">
-          {/* Avatar */}
-          <div className="shrink-0">
-            {user.avatar ? (
-              <img
-                src={`${API_URL}${user.avatar}`}
-                alt={user.firstName}
-                className="w-10 h-10 rounded-full object-cover"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center border border-border font-semibold text-sm text-foreground/60">
-                {user.firstName[0]}
-              </div>
-            )}
-          </div>
+    <div className="bg-surface border border-border rounded-xl p-4">
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={`What's on your mind, ${user.firstName}?`}
+        rows={3}
+        maxLength={500}
+        disabled={submitting}
+        className="w-full bg-background text-foreground border border-border rounded-lg p-3 text-sm resize-none overflow-hidden focus:ring-1 focus:ring-primary outline-none placeholder:text-muted"
+      />
 
-          {/* Input area */}
-          <div className="flex-1 min-w-0">
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder={`What's on your mind, ${user.firstName}?`}
-              rows={2}
-              maxLength={500}
-              className="w-full resize-none bg-transparent text-sm text-foreground placeholder:text-foreground/40 border-none focus:outline-none focus:ring-0 overflow-hidden"
-            />
-
-            {/* Image preview */}
-            {preview && (
-              <div className="relative w-fit mt-2">
-                <img
-                  src={preview}
-                  alt="preview"
-                  className="max-h-40 rounded-lg object-cover border border-border"
-                />
-                <button
-                  type="button"
-                  onClick={removeImage}
-                  className="absolute top-1 right-1 bg-background/90 rounded-full p-0.5 border border-border hover:bg-background"
-                >
-                  <X className="w-3 h-3 text-foreground" />
-                </button>
-              </div>
-            )}
-
-            {error && (
-              <p className="text-xs text-red-500 mt-1">{error}</p>
-            )}
-
-            {/* Divider */}
-            <div className="border-t border-border mt-3 pt-3 flex items-center justify-between">
-              {/* Left actions */}
-              <div className="flex items-center gap-1">
-                {/* Image upload */}
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="p-2 text-foreground/40 hover:text-primary rounded-full transition-colors"
-                  title="Add photo"
-                >
-                  <ImageIcon className="w-5 h-5" />
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleImageChange}
-                />
-
-                {/* Privacy dropdown */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setPrivacyOpen((o) => !o)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-foreground/60 bg-foreground/5 dark:bg-foreground/10 rounded-full hover:bg-foreground/10 transition-colors"
-                  >
-                    <PrivacyIcon className="w-3.5 h-3.5" />
-                    {currentPrivacy.label}
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
-
-                  {privacyOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-40 bg-background border border-border rounded-xl shadow-xl z-20 overflow-hidden">
-                      {PRIVACY_OPTIONS.map((opt) => {
-                        const Icon = opt.icon;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => {
-                              setPrivacy(opt.value);
-                              setPrivacyOpen(false);
-                            }}
-                            className={`w-full flex items-center gap-2 px-4 py-2.5 text-xs text-left hover:bg-foreground/5 transition-colors ${
-                              privacy === opt.value
-                                ? "text-primary font-medium"
-                                : "text-foreground/70"
-                            }`}
-                          >
-                            <Icon className="w-3.5 h-3.5" />
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Post button */}
-              <button
-                type="submit"
-                disabled={(!content.trim() && !image) || submitting}
-                className="bg-primary text-white px-5 py-1.5 rounded-full text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
-              >
-                {submitting ? "Posting..." : "Post"}
-              </button>
-            </div>
-          </div>
+      {/* Image preview */}
+      {preview && (
+        <div className="relative w-fit mt-2">
+          <img
+            src={preview}
+            alt="preview"
+            className="max-h-40 rounded-lg object-cover border border-border"
+          />
+          <button
+            type="button"
+            onClick={removeImage}
+            className="absolute top-1 right-1 bg-background/90 rounded-full p-0.5 border border-border hover:bg-background"
+          >
+            <X className="w-3 h-3 text-foreground" />
+          </button>
         </div>
-      </form>
+      )}
+
+      {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+
+      {/* Bottom row */}
+      <div className="flex items-center gap-3 mt-3">
+        {/* Add Image */}
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-2 text-muted hover:text-foreground text-sm transition-colors"
+        >
+          <ImageIcon className="w-4 h-4" />
+          Add Image
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageChange}
+        />
+
+        {/* Privacy dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setPrivacyOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-muted hover:text-foreground text-sm transition-colors"
+          >
+            <PrivacyIcon className="w-4 h-4" />
+            {currentPrivacy.label}
+            <ChevronDown className="w-3 h-3" />
+          </button>
+
+          {privacyOpen && (
+            <div className="absolute bottom-full left-0 mb-2 w-44 bg-background border border-border rounded-xl shadow-xl z-20 overflow-hidden py-1">
+              {PRIVACY_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => { setPrivacy(opt.value); setPrivacyOpen(false); }}
+                    className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left hover:bg-foreground/5 transition-colors ${
+                      privacy === opt.value ? "text-primary font-medium" : "text-foreground/70"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Post button — pushed to the right */}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={(!content.trim() && !image) || submitting}
+          className="ml-auto bg-primary hover:bg-primary/90 disabled:bg-muted disabled:cursor-not-allowed text-black px-6 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2"
+        >
+          {submitting ? (
+            <>
+              <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              Posting...
+            </>
+          ) : (
+            <>
+              <Send className="w-4 h-4" />
+              Post
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

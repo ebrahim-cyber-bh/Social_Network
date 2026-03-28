@@ -37,6 +37,24 @@ func GetAllPersonalPosts() ([]models.Post, error) {
 	return posts, rows.Err()
 }
 
+// GetPostByID fetches a single post by ID.
+func GetPostByID(postID int64) (models.Post, error) {
+	var p models.Post
+	err := DB.QueryRow(`
+		SELECT
+			p.id,
+			p.user_id,
+			p.group_id,
+			p.content,
+			COALESCE(p.image_path, '') AS image_path,
+			COALESCE(p.privacy, 'public')  AS privacy,
+			p.created_at
+		FROM posts p
+		WHERE p.id = ?
+	`, postID).Scan(&p.ID, &p.UserID, &p.GroupID, &p.Content, &p.ImagePath, &p.Privacy, &p.CreatedAt)
+	return p, err
+}
+
 // IsInSelectedFollowers returns true when userID is in the selected-followers
 // list for the given post.
 func IsInSelectedFollowers(postID int64, userID int) (bool, error) {

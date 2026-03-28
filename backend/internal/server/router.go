@@ -65,6 +65,7 @@ func SetupRoutes(mux *http.ServeMux) {
 	// ===== POSTS =====
 	authHandle(mux, "GET /api/posts", posts.GetFeedPosts)
 	authHandle(mux, "POST /api/posts", posts.CreatePost)
+	authHandle(mux, "GET /api/posts/{id}", posts.GetPost)
 	authHandle(mux, "PUT /api/posts/{id}", posts.UpdatePost)
 	authHandle(mux, "GET /api/posts/{id}/comments", posts.GetComments)
 	authHandle(mux, "POST /api/posts/{id}/comments", posts.AddComment)
