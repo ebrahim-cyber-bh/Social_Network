@@ -220,10 +220,10 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(5 << 20); err != nil {
+	if err := r.ParseMultipartForm(25 << 20); err != nil {
 		utils.RespondJSON(w, http.StatusBadRequest, models.GenericResponse{
 			Success: false,
-			Message: "Request too large (max 5MB)",
+			Message: "Request too large (max 25MB)",
 		})
 		return
 	}
@@ -258,10 +258,10 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 		imagePath = &path
 	}
 
-	if len(content) == 0 && imagePath == nil {
+	if imagePath == nil {
 		utils.RespondJSON(w, http.StatusBadRequest, models.GenericResponse{
 			Success: false,
-			Message: "Post must have content or an image",
+			Message: "Post must include a photo, GIF, or video",
 		})
 		return
 	}

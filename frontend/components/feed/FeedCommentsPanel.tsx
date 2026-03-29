@@ -178,12 +178,12 @@ export default function FeedCommentsPanel({ post, currentUserId, onClose }: Prop
   const authorName = post.author ? `${post.author.firstName} ${post.author.lastName}` : "Post";
 
   return (
-    <div className="w-96 shrink-0 flex flex-col border-l border-border bg-background h-full">
+    <div className="w-[440px] shrink-0 flex flex-col border-l border-border bg-background h-full">
       {/* Header */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border">
+      <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
         <div className="min-w-0">
-          <p className="font-bold text-sm text-foreground">Comments</p>
-          <p className="text-xs text-foreground/40 truncate">{authorName}</p>
+          <p className="font-bold text-base text-foreground">Comments</p>
+          <p className="text-sm text-foreground/40 truncate">{authorName}</p>
         </div>
         <button onClick={onClose} className="p-1.5 rounded-full hover:bg-foreground/10 text-foreground/50 hover:text-foreground transition-colors shrink-0">
           <X className="w-4 h-4" />
@@ -197,7 +197,7 @@ export default function FeedCommentsPanel({ post, currentUserId, onClose }: Prop
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : comments.length === 0 ? (
-          <p className="text-xs text-foreground/30 text-center py-10">No comments yet</p>
+          <p className="text-sm text-foreground/30 text-center py-10">No comments yet</p>
         ) : (
           <div className="divide-y divide-border">
             {comments.map(c => {
@@ -210,22 +210,22 @@ export default function FeedCommentsPanel({ post, currentUserId, onClose }: Prop
               const isEditingThis = editingCommentId === c.id;
 
               return (
-                <div key={c.id} className="px-4 py-3">
+                <div key={c.id} className="px-5 py-4">
                   {/* Comment */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     <div className="shrink-0">
                       {cAuthor?.avatar ? (
-                        <img src={`${API_URL}${cAuthor.avatar}`} alt={cName} className="w-8 h-8 rounded-full object-cover" />
+                        <img src={`${API_URL}${cAuthor.avatar}`} alt={cName} className="w-9 h-9 rounded-full object-cover" />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center border border-border font-semibold text-xs text-foreground/60">
+                        <div className="w-9 h-9 rounded-full bg-foreground/10 flex items-center justify-center border border-border font-semibold text-sm text-foreground/60">
                           {cName[0]}
                         </div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <p className="font-semibold text-xs text-foreground">{cName}</p>
-                        <p className="text-[10px] text-foreground/30">{timeAgo(c.created_at)}</p>
+                        <p className="font-semibold text-sm text-foreground">{cName}</p>
+                        <p className="text-xs text-foreground/30">{timeAgo(c.created_at)}</p>
                         {isMyComment && !isEditingThis && (
                           <ItemMenu
                             onEdit={() => { setEditingCommentId(c.id); setEditingCommentValue(c.content); }}
@@ -249,17 +249,17 @@ export default function FeedCommentsPanel({ post, currentUserId, onClose }: Prop
                           </div>
                         </div>
                       ) : (
-                        <p className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap break-words mt-0.5">{c.content}</p>
+                        <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap break-words mt-0.5">{c.content}</p>
                       )}
 
                       {/* Actions */}
                       {!isEditingThis && (
                         <div className="flex items-center gap-3 mt-1.5">
                           <button onClick={() => updateRS(c.id, { inputOpen: !rs.inputOpen })}
-                            className="text-[10px] font-semibold text-foreground/40 hover:text-primary transition-colors">Reply</button>
+                            className="text-xs font-semibold text-foreground/40 hover:text-primary transition-colors">Reply</button>
                           {rs.repliesCount > 0 && (
                             <button onClick={() => handleToggleReplies(c.id)}
-                              className="flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:opacity-80 transition-opacity">
+                              className="flex items-center gap-0.5 text-xs font-semibold text-primary hover:opacity-80 transition-opacity">
                               {rs.open ? <><ChevronUp className="w-3 h-3" />Hide</> : <><ChevronDown className="w-3 h-3" />{rs.repliesCount} {rs.repliesCount === 1 ? "reply" : "replies"}</>}
                             </button>
                           )}
@@ -287,8 +287,8 @@ export default function FeedCommentsPanel({ post, currentUserId, onClose }: Prop
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <p className="font-semibold text-[10px] text-foreground">{rName}</p>
-                                    <p className="text-[9px] text-foreground/30">{timeAgo(reply.created_at)}</p>
+                                    <p className="font-semibold text-xs text-foreground">{rName}</p>
+                                    <p className="text-[11px] text-foreground/30">{timeAgo(reply.created_at)}</p>
                                     {isMyReply && !isEditingReply && (
                                       <ItemMenu
                                         onEdit={() => { setEditingReplyId(reply.id); setEditingReplyValue(reply.content); }}
@@ -307,7 +307,7 @@ export default function FeedCommentsPanel({ post, currentUserId, onClose }: Prop
                                       </div>
                                     </div>
                                   ) : (
-                                    <p className="text-[11px] text-foreground/80 leading-relaxed whitespace-pre-wrap break-words mt-0.5">{reply.content}</p>
+                                    <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap break-words mt-0.5">{reply.content}</p>
                                   )}
                                 </div>
                               </div>
@@ -315,7 +315,7 @@ export default function FeedCommentsPanel({ post, currentUserId, onClose }: Prop
                           })}
                           {rs.loaded && remaining > 0 && (
                             <button onClick={() => updateRS(c.id, { visible: rs.visible + REPLIES_PAGE })}
-                              className="text-[10px] font-semibold text-primary hover:opacity-80 transition-opacity">
+                              className="text-xs font-semibold text-primary hover:opacity-80 transition-opacity">
                               View {Math.min(remaining, REPLIES_PAGE)} more
                             </button>
                           )}

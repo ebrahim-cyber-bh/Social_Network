@@ -37,11 +37,14 @@ export default function FeedPage() {
   // Create post modal
   const [createOpen, setCreateOpen] = useState(false);
 
+  const [skipTransition, setSkipTransition] = useState(false);
+
   const isFetchingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const offsetRef = useRef(0);
   const lastScrollRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const navBlockedRef = useRef(false);
 
   // ── Auth ──
   useEffect(() => {
@@ -98,8 +101,12 @@ export default function FeedPage() {
   const goNext = useCallback((postsLen: number) => {
     setCurrentIdx(prev => {
       const next = prev + 1;
-      if (next >= postsLen) return prev; // can't go past end
-      // preload more when near end
+      if (next >= postsLen) {
+        // At the end — fetch more if available so user can continue scrolling
+        if (hasMoreRef.current && !isFetchingRef.current) fetchPage(false);
+        return prev;
+      }
+      // Preload more when near end
       if (next >= postsLen - PRELOAD_THRESHOLD && hasMoreRef.current && !isFetchingRef.current) {
         fetchPage(false);
       }
@@ -114,6 +121,7 @@ export default function FeedPage() {
   // ── Keyboard navigation ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (navBlockedRef.current) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "ArrowDown") { e.preventDefault(); goNext(posts.length); }
       if (e.key === "ArrowUp") { e.preventDefault(); goPrev(); }
@@ -128,6 +136,7 @@ export default function FeedPage() {
     if (!el) return;
     const handler = (e: WheelEvent) => {
       e.preventDefault();
+      if (navBlockedRef.current) return;
       const now = Date.now();
       if (now - lastScrollRef.current < 650) return;
       lastScrollRef.current = now;
@@ -171,11 +180,14 @@ export default function FeedPage() {
   }, [fetchPage]);
 
   const handleDeleted = useCallback((id: number) => {
+    setSkipTransition(true);
     setPosts(prev => {
       const next = prev.filter(p => p.id !== id);
       setCurrentIdx(ci => Math.min(ci, Math.max(0, next.length - 1)));
       return next;
     });
+    // Re-enable transition after the snap has painted
+    requestAnimationFrame(() => requestAnimationFrame(() => setSkipTransition(false)));
     if (commentsPostId === id) handleCloseComments();
   }, [commentsPostId, handleCloseComments]);
 
@@ -243,7 +255,7 @@ export default function FeedPage() {
             className="absolute inset-0 flex flex-col"
             style={{
               transform: `translateY(-${currentIdx * 100}%)`,
-              transition: "transform 0.38s cubic-bezier(0.4, 0, 0.2, 1)",
+              transition: skipTransition ? "none" : "transform 0.38s cubic-bezier(0.4, 0, 0.2, 1)",
             }}
           >
             {posts.map((post, i) => (
@@ -252,7 +264,7 @@ export default function FeedPage() {
                 className="shrink-0 w-full flex items-center justify-center p-6"
                 style={{ height: "100vh", minHeight: "100%" }}
               >
-                <div className="w-full max-w-[680px]">
+                <div className="w-full max-w-[860px]">
                   <FeedPostFull
                     post={post}
                     currentUserId={user.userId ?? 0}
@@ -260,6 +272,7 @@ export default function FeedPage() {
                     onDeleted={handleDeleted}
                     onUpdated={handleUpdated}
                     onToggleComments={() => handleOpenComments(post.id)}
+                    onNavBlock={(blocked) => { navBlockedRef.current = blocked; }}
                   />
                 </div>
               </div>

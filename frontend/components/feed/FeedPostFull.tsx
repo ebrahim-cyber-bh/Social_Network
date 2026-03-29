@@ -16,6 +16,7 @@ interface Props {
   onDeleted: (id: number) => void;
   onUpdated: (id: number, content: string, privacy: string) => void;
   onToggleComments: () => void;
+  onNavBlock?: (blocked: boolean) => void;
 }
 
 const PRIVACY_OPTIONS = [
@@ -43,9 +44,9 @@ function timeAgo(dateStr: string) {
 }
 
 export default function FeedPostFull({
-  post, currentUserId, commentsOpen, onDeleted, onUpdated, onToggleComments,
+  post, currentUserId, commentsOpen, onDeleted, onUpdated, onToggleComments, onNavBlock,
 }: Props) {
-  const isOwner = post.user_id === currentUserId;
+  const isOwner = Number(post.user_id) === Number(currentUserId);
 
   const [likes, setLikes] = useState(post.likes);
   const [isLiked, setIsLiked] = useState(post.is_liked);
@@ -54,6 +55,18 @@ export default function FeedPostFull({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (!entry.isIntersecting) video.pause(); },
+      { threshold: 0.3 }
+    );
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, [post.image_path]);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -73,6 +86,7 @@ export default function FeedPostFull({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
 
   useEffect(() => {
     if (!editPrivacyOpen) return;
@@ -106,8 +120,8 @@ export default function FeedPostFull({
 
   const handleDeleteConfirm = async () => {
     setDeleting(true);
-    try { await deletePost(post.id); onDeleted(post.id); }
-    catch { setDeleting(false); setShowDeleteModal(false); }
+    try { await deletePost(post.id); onNavBlock?.(false); onDeleted(post.id); }
+    catch { setDeleting(false); setShowDeleteModal(false); onNavBlock?.(false); }
   };
 
   const handleEditSave = async () => {
@@ -116,7 +130,7 @@ export default function FeedPostFull({
     try {
       await updatePost(post.id, editContent.trim(), editPrivacy);
       onUpdated(post.id, editContent.trim(), editPrivacy);
-      setEditing(false);
+      setEditing(false); onNavBlock?.(false);
     } catch { } finally { setEditLoading(false); }
   };
 
@@ -135,7 +149,7 @@ export default function FeedPostFull({
   return (
     <>
       {/* ── Full post card ─────────────────────────────────── */}
-      <div className="w-full flex flex-col bg-surface border border-border rounded-2xl overflow-hidden max-h-[82vh]">
+      <div className="w-full flex flex-col bg-surface border border-border rounded-2xl overflow-hidden max-h-[90vh]">
 
         {/* Header */}
         <div className="shrink-0 p-5 flex items-center justify-between border-b border-border">
@@ -170,14 +184,14 @@ export default function FeedPostFull({
               {menuOpen && (
                 <div className="absolute right-0 top-10 w-44 bg-background border border-border rounded-xl shadow-2xl z-20 overflow-hidden py-1">
                   <button
-                    onClick={() => { setEditing(true); setMenuOpen(false); }}
+                    onClick={() => { setEditing(true); setMenuOpen(false); onNavBlock?.(true); }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/70 hover:bg-foreground/5 transition-colors"
                   >
                     <Pencil className="w-4 h-4" /> Edit post
                   </button>
                   <div className="mx-3 border-t border-border" />
                   <button
-                    onClick={() => { setShowDeleteModal(true); setMenuOpen(false); }}
+                    onClick={() => { setShowDeleteModal(true); setMenuOpen(false); onNavBlock?.(true); }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/5 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" /> Delete post
@@ -218,7 +232,7 @@ export default function FeedPostFull({
               </button>
               <div className="flex justify-end gap-2 pt-1">
                 <button
-                  onClick={() => { setEditContent(post.content); setEditPrivacy(post.privacy); setEditing(false); }}
+                  onClick={() => { setEditContent(post.content); setEditPrivacy(post.privacy); setEditing(false); onNavBlock?.(false); }}
                   className="px-4 py-2 rounded-lg text-sm text-foreground/60 hover:bg-foreground/5 transition-colors"
                 >
                   Cancel
@@ -243,18 +257,29 @@ export default function FeedPostFull({
                 </div>
               )}
 
-              {/* Image */}
+              {/* Media */}
               {post.image_path && (
-                <div
-                  className="cursor-zoom-in bg-foreground/5"
-                  onClick={() => setLightbox(true)}
-                >
-                  <img
-                    src={`${API_URL}${post.image_path}`}
-                    alt="post"
-                    className="w-full object-contain max-h-[55vh]"
-                  />
-                </div>
+                /\.(mp4|webm|mov)$/i.test(post.image_path) ? (
+                  <div className="bg-foreground/5">
+                    <video
+                      ref={videoRef}
+                      src={`${API_URL}${post.image_path}`}
+                      controls
+                      className="w-full max-h-[74vh]"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="cursor-zoom-in bg-foreground/5"
+                    onClick={() => setLightbox(true)}
+                  >
+                    <img
+                      src={`${API_URL}${post.image_path}`}
+                      alt="post"
+                      className="w-full object-contain max-h-[74vh]"
+                    />
+                  </div>
+                )
               )}
             </>
           )}
@@ -314,10 +339,10 @@ export default function FeedPostFull({
         document.body
       )}
 
-      {/* ── Delete modal ── */}
-      {showDeleteModal && (
+      {/* ── Delete modal (portal to escape transformed ancestor) ── */}
+      {showDeleteModal && typeof window !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !deleting && setShowDeleteModal(false)} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { if (!deleting) { setShowDeleteModal(false); onNavBlock?.(false); } }} />
           <div className="relative w-full max-w-sm bg-background border border-border rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5 pb-4">
               <div className="flex items-center gap-3">
@@ -329,7 +354,7 @@ export default function FeedPostFull({
                   <p className="text-xs text-foreground/40 mt-0.5">This action cannot be undone</p>
                 </div>
               </div>
-              <button onClick={() => !deleting && setShowDeleteModal(false)}
+              <button onClick={() => { if (!deleting) { setShowDeleteModal(false); onNavBlock?.(false); } }}
                 className="p-1.5 rounded-full hover:bg-foreground/5 text-foreground/40 transition-colors">
                 <X className="w-4 h-4" />
               </button>
@@ -340,7 +365,7 @@ export default function FeedPostFull({
               </div>
             )}
             <div className="flex gap-2 px-5 pb-5">
-              <button onClick={() => setShowDeleteModal(false)} disabled={deleting}
+              <button onClick={() => { setShowDeleteModal(false); onNavBlock?.(false); }} disabled={deleting}
                 className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-foreground/70 hover:bg-foreground/5 disabled:opacity-40 transition-colors">
                 Cancel
               </button>
@@ -350,11 +375,12 @@ export default function FeedPostFull({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Image lightbox ── */}
-      {lightbox && post.image_path && typeof window !== "undefined" && createPortal(
+      {lightbox && post.image_path && !/\.(mp4|webm|mov)$/i.test(post.image_path) && typeof window !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm cursor-zoom-out"
           onClick={() => setLightbox(false)}>
           <img src={`${API_URL}${post.image_path}`} alt="full"

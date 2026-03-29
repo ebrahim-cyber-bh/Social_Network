@@ -50,12 +50,12 @@ export async function getFeedPosts(offset = 0, limit = 5): Promise<{ posts: Feed
 export async function createPost(
   content: string,
   privacy: string,
-  image?: File
+  media: File
 ): Promise<{ post_id: number }> {
   const form = new FormData();
   form.append("content", content);
   form.append("privacy", privacy);
-  if (image) form.append("image", image);
+  form.append("image", media);
 
   const res = await fetch(`${API_URL}/api/posts`, {
     method: "POST",
