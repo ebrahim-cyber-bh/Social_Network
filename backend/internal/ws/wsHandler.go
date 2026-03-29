@@ -116,6 +116,12 @@ func WSHandler(w http.ResponseWriter, r *http.Request) {
 		case "group_message":
 			HandleGroupMessage(&session, msg)
 
+		case "typing":
+			HandleTyping(&session, msg)
+
+		case "stop_typing":
+			HandleStopTyping(&session, msg)
+
 		default:
 			fmt.Printf("Unknown message type from user %d: %s\n", session.UserID, msgType)
 		}

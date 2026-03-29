@@ -19,8 +19,10 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [typingUsers, setTypingUsers] = useState<Map<number, { name: string; timeout: NodeJS.Timeout }>>(new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const typingHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const LIMIT = 10;
 
@@ -33,15 +35,64 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
     const handleNewMessage = (data: any) => {
       if (data.type === "new_group_message" && data.data && data.data.group_id === groupId) {
         setMessages((prev) => [...prev, data.data]);
+        // Remove sender from typing indicators as soon as their message arrives
+        setTypingUsers((prev) => {
+          const updated = new Map(prev);
+          const existing = updated.get(data.data.user_id);
+          if (existing) clearTimeout(existing.timeout);
+          updated.delete(data.data.user_id);
+          return updated;
+        });
         scrollToBottom();
       }
     };
 
+    // Listen for typing events
+    const handleUserTyping = (data: any) => {
+      if (data.group_id === groupId && data.user_id !== currentUser?.userId) {
+        setTypingUsers((prev) => {
+          const updated = new Map(prev);
+          const existing = updated.get(data.user_id);
+          
+          // Clear existing timeout
+          if (existing) clearTimeout(existing.timeout);
+          
+          // Keep generous grace period so continuous typing never flickers.
+          const timeout = setTimeout(() => {
+            setTypingUsers((prev) => {
+              const updated = new Map(prev);
+              updated.delete(data.user_id);
+              return updated;
+            });
+          }, 3200);
+          
+          updated.set(data.user_id, { name: data.user_name || "Someone", timeout });
+          return updated;
+        });
+      }
+    };
+
+    const handleUserStopTyping = (data: any) => {
+      if (data.group_id === groupId) {
+        setTypingUsers((prev) => {
+          const updated = new Map(prev);
+          const existing = updated.get(data.user_id);
+          if (existing) clearTimeout(existing.timeout);
+          updated.delete(data.user_id);
+          return updated;
+        });
+      }
+    };
+
     on("new_group_message", handleNewMessage);
+    on("user_typing", handleUserTyping);
+    on("user_stop_typing", handleUserStopTyping);
     return () => {
       off("new_group_message", handleNewMessage);
+      off("user_typing", handleUserTyping);
+      off("user_stop_typing", handleUserStopTyping);
     };
-  }, [groupId]);
+  }, [groupId, currentUser?.userId]);
 
   const loadInitialMessages = async () => {
     setLoading(true);
@@ -89,10 +140,41 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
     }, 100);
   };
 
+  const startTypingHeartbeat = () => {
+    if (typingHeartbeatRef.current) return;
+
+    // Show typing instantly on first keypress.
+    send({
+      type: "typing",
+      group_id: groupId,
+    });
+
+    typingHeartbeatRef.current = setInterval(() => {
+      send({
+        type: "typing",
+        group_id: groupId,
+      });
+    }, 900);
+  };
+
+  const stopTypingHeartbeat = () => {
+    if (typingHeartbeatRef.current) {
+      clearInterval(typingHeartbeatRef.current);
+      typingHeartbeatRef.current = null;
+    }
+
+    send({
+      type: "stop_typing",
+      group_id: groupId,
+    });
+  };
+
   const handleSendMessage = () => {
     if (!newMessage.trim() || !currentUser) return;
 
     // Send via WebSocket
+    stopTypingHeartbeat();
+
     send({
       type: "group_message",
       group_id: groupId,
@@ -101,6 +183,31 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
 
     setNewMessage("");
   };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewMessage(value);
+
+    if (value.trim()) {
+      startTypingHeartbeat();
+    } else {
+      // Stop heartbeat, but do not emit stop immediately here to avoid blink
+      // during rapid edits/backspace/retype sequences.
+      if (typingHeartbeatRef.current) {
+        clearInterval(typingHeartbeatRef.current);
+        typingHeartbeatRef.current = null;
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (typingHeartbeatRef.current) {
+        clearInterval(typingHeartbeatRef.current);
+        typingHeartbeatRef.current = null;
+      }
+    };
+  }, []);
 
   const handleScroll = () => {
     if (chatContainerRef.current) {
@@ -112,17 +219,18 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-surface rounded-3xl border border-border overflow-hidden glass relative h-[600px]">
+    <div className="flex-1 min-h-0 h-full flex flex-col bg-surface rounded-3xl border border-border overflow-hidden glass relative">
       {/* Group Chat Header */}
       <div className="p-6 border-b border-border flex items-center justify-between">
         <h3 className="text-lg font-bold">Group Chat</h3>
       </div>
 
       {/* Chat Messages */}
-      <div 
+      <div
         ref={chatContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-6 space-y-1"
+        className="flex-1 min-h-0 overflow-y-scroll p-6 space-y-1"
+        style={{ scrollbarGutter: "stable" }}
       >
         {loadingMore && (
           <div className="flex justify-center p-2">
@@ -226,6 +334,23 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
             );
           })
         )}
+        
+        {/* Typing Indicator */}
+        {typingUsers.size > 0 && (
+          <div className="flex gap-2 items-center px-2 py-2 text-sm text-muted-foreground italic">
+            <div className="flex gap-1">
+              <span className="inline-block w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="inline-block w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="inline-block w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+            <span>
+              {Array.from(typingUsers.values())
+                .map((u) => u.name)
+                .join(", ")} {typingUsers.size === 1 ? "is" : "are"} typing...
+            </span>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 
@@ -241,7 +366,7 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
           <input
             type="text"
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={handleInputChange}
             placeholder="Type a message..."
             className="w-full bg-muted/5 border border-border rounded-2xl py-4 pl-6 pr-16 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary placeholder-muted-foreground text-sm transition-all text-foreground"
           />

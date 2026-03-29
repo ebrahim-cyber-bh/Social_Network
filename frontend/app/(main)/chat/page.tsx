@@ -119,8 +119,8 @@ export default function ChatPage() {
 
   return (
     <div className="flex-1 min-h-0 p-6 lg:p-8 bg-background">
-      <div className="grid grid-cols-12 gap-6 min-h-[calc(100vh-8rem)]">
-        <aside className="col-span-12 lg:col-span-3 rounded-3xl border border-border bg-surface p-4 overflow-y-auto">
+      <div className="grid grid-cols-12 gap-6 min-h-[calc(100vh-8rem)] lg:h-[calc(100vh-8rem)] items-stretch">
+        <aside className="col-span-12 lg:col-span-3 lg:h-full min-h-0 rounded-3xl border border-border bg-surface p-4 overflow-y-auto">
           <div className="flex items-center justify-between mb-4 px-2">
             <h2 className="text-sm font-black uppercase tracking-widest text-muted">Your Groups</h2>
             <div className="flex items-center gap-1 text-xs text-muted">
@@ -149,7 +149,7 @@ export default function ChatPage() {
           </div>
         </aside>
 
-        <section className="col-span-12 lg:col-span-6 flex flex-col min-h-0">
+        <section className="col-span-12 lg:col-span-6 flex flex-col min-h-0 h-full overflow-hidden">
           {selectedGroup ? (
             <GroupChat groupId={selectedGroup.id} currentUser={currentUser} />
           ) : (
@@ -159,7 +159,7 @@ export default function ChatPage() {
           )}
         </section>
 
-        <aside className="col-span-12 lg:col-span-3 rounded-3xl border border-border bg-surface p-4 overflow-y-auto">
+        <aside className="col-span-12 lg:col-span-3 lg:h-full min-h-0 rounded-3xl border border-border bg-surface p-4 overflow-y-auto">
           <div className="flex items-center justify-between mb-4 px-2">
             <h2 className="text-sm font-black uppercase tracking-widest text-muted">Members</h2>
             <span className="text-xs font-bold bg-primary/15 text-primary px-2 py-1 rounded-lg">
