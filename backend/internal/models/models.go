@@ -226,6 +226,17 @@ type GroupChatMessage struct {
 	User      User      `json:"user,omitempty"` // For displaying author details
 }
 
+type Comment struct {
+	ID           int64  `json:"id"`
+	PostID       int64  `json:"post_id"`
+	UserID       int    `json:"user_id"`
+	Content      string `json:"content"`
+	CreatedAt    string `json:"created_at"`
+	ParentID     *int64 `json:"parent_id,omitempty"`
+	RepliesCount int    `json:"replies_count"`
+	Author       *User  `json:"author,omitempty"`
+}
+
 // UserSearchResult is returned by GET /api/users/search
 type UserSearchResult struct {
 	UserID    int    `json:"userId"`
