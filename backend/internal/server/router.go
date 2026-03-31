@@ -32,6 +32,8 @@ func SetupRoutes(mux *http.ServeMux) {
 	authHandle(mux, "GET /api/users/{username}", users.GetPublicProfileHandler)
 	authHandle(mux, "GET /api/users/{username}/followers", follow.GetFollowersHandler)
 	authHandle(mux, "GET /api/users/{username}/following", follow.GetFollowingListHandler)
+	authHandle(mux, "GET /api/users/{username}/posts", posts.GetUserPostsHandler)
+	authHandle(mux, "GET /api/users/{username}/stats", users.GetUserStatsHandler)
 
 	// ===== FOLLOW =====
 	authHandle(mux, "POST /api/follow/{username}", follow.FollowHandler)

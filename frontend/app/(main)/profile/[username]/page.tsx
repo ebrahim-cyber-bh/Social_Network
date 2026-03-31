@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Settings,
@@ -14,6 +14,12 @@ import {
   Search,
   UserIcon,
   ArrowLeft,
+  Heart,
+  MessageSquare,
+  Share2,
+  Activity,
+  FileText,
+  Zap,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/auth";
 import { updateProfile } from "@/lib/auth/update";
@@ -25,13 +31,286 @@ import {
 } from "@/lib/users/follow";
 import { fetchUserProfile } from "@/lib/users/profile";
 import type { PublicProfile } from "@/lib/users/profile";
+import { getUserPosts, toggleLike, type FeedPost } from "@/lib/posts";
 import { API_URL } from "@/lib/config";
+
+interface UserStats {
+  postsCount: number;
+  likesReceived: number;
+  commentsReceived: number;
+}
+
+async function getUserStats(username: string): Promise<UserStats | null> {
+  try {
+    const res = await fetch(`${API_URL}/api/users/${username}/stats`, { credentials: "include" });
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
 import { User } from "@/lib/interfaces";
 import type { UserSearchResult } from "@/lib/users/search";
 import * as ws from "@/lib/ws/ws";
 
-type Tab = "followers" | "following";
+type Tab = "posts" | "followers" | "following" | "activity";
 type FollowStatus = "none" | "pending" | "accepted";
+
+/* ─────────────────────────────────────────────────────────── */
+/*  Count-up animation hook                                    */
+/* ─────────────────────────────────────────────────────────── */
+function useCountUp(target: number, duration: number, animKey: number) {
+  const [value, setValue] = useState(0);
+  const rafRef = useRef<number>();
+
+  useEffect(() => {
+    setValue(0);
+    if (target === 0) return;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      setValue(Math.round(eased * target));
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [target, duration, animKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return value;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/*  Animated stat ring                                         */
+/* ─────────────────────────────────────────────────────────── */
+const RADIUS = 40;
+const CIRC = 2 * Math.PI * RADIUS; // ≈ 251.3
+
+function StatRing({
+  value,
+  maxValue,
+  color,
+  glowColor,
+  label,
+  icon: Icon,
+  animKey,
+  delay = 0,
+}: {
+  value: number;
+  maxValue: number;
+  color: string;
+  glowColor: string;
+  label: string;
+  icon: React.ElementType;
+  animKey: number;
+  delay?: number;
+}) {
+  const displayed = useCountUp(value, 1600 + delay, animKey);
+  const progress = maxValue > 0 ? Math.min(displayed / maxValue, 1) : 0;
+  const offset = CIRC * (1 - progress);
+
+  return (
+    <div className="flex flex-col items-center gap-3 group">
+      {/* Ring + icon + number */}
+      <div className="relative w-36 h-36">
+
+        {/* Slow-spinning outer dashed decoration */}
+        <div
+          className="absolute inset-[-6px] rounded-full"
+          style={{ animation: `spin ${18 + delay / 100}s linear infinite` }}
+        >
+          <svg viewBox="0 0 108 108" className="w-full h-full opacity-20">
+            <circle
+              cx="54" cy="54" r="50"
+              fill="none"
+              stroke={color}
+              strokeWidth="1.5"
+              strokeDasharray="4 8"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+
+        {/* Main ring SVG */}
+        <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+          {/* Track */}
+          <circle cx="50" cy="50" r={RADIUS} fill="none"
+            stroke="currentColor" strokeWidth="7"
+            className="text-foreground/5"
+          />
+          {/* Progress arc */}
+          <circle
+            cx="50" cy="50" r={RADIUS}
+            fill="none"
+            stroke={color}
+            strokeWidth="7"
+            strokeLinecap="round"
+            strokeDasharray={CIRC}
+            strokeDashoffset={offset}
+            style={{
+              transition: "stroke-dashoffset 1.6s cubic-bezier(0.4, 0, 0.2, 1)",
+              filter: `drop-shadow(0 0 6px ${glowColor})`,
+            }}
+          />
+        </svg>
+
+        {/* Center content */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+          <Icon
+            className="w-5 h-5 transition-transform group-hover:scale-125"
+            style={{ color, filter: `drop-shadow(0 0 4px ${glowColor})` }}
+          />
+          <span className="text-2xl font-black text-foreground tabular-nums leading-none">
+            {displayed.toLocaleString()}
+          </span>
+        </div>
+      </div>
+
+      {/* Label */}
+      <div className="text-center">
+        <p
+          className="text-xs font-bold uppercase tracking-widest"
+          style={{ color }}
+        >
+          {label}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const PRIVACY_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
+  public:    { label: "PUBLIC",        icon: <Globe  className="w-3 h-3" /> },
+  followers: { label: "FOLLOWERS",     icon: <Users  className="w-3 h-3" /> },
+  selected:  { label: "CLOSE FRIENDS", icon: <Lock   className="w-3 h-3" /> },
+};
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/*  Profile Post Card — matches feed card style exactly        */
+/* ─────────────────────────────────────────────────────────── */
+function ProfilePostCard({ post, authorName, authorAvatarSrc }: {
+  post: FeedPost;
+  authorName: string;
+  authorAvatarSrc: string | null;
+}) {
+  const [likes, setLikes] = useState(post.likes);
+  const [isLiked, setIsLiked] = useState(post.is_liked);
+  const [likeLoading, setLikeLoading] = useState(false);
+
+  const privacy = PRIVACY_LABELS[post.privacy] ?? PRIVACY_LABELS.public;
+  const isVideo = post.image_path
+    ? /\.(mp4|webm|mov)$/i.test(post.image_path)
+    : false;
+
+  const handleLike = async () => {
+    if (likeLoading) return;
+    setLikeLoading(true);
+    const prevLiked = isLiked; const prevCount = likes;
+    setIsLiked(!prevLiked); setLikes(prevLiked ? prevCount - 1 : prevCount + 1);
+    try {
+      const res = await toggleLike(post.id);
+      setIsLiked(res.is_liked); setLikes(res.likes);
+    } catch { setIsLiked(prevLiked); setLikes(prevCount); }
+    finally { setLikeLoading(false); }
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/posts/${post.author?.username ?? post.user_id}/${post.id}`;
+    if (navigator.share) await navigator.share({ text: post.content, url });
+    else await navigator.clipboard.writeText(url);
+  };
+
+  return (
+    <div className="w-full flex flex-col bg-surface border border-border rounded-2xl overflow-hidden shrink-0">
+      {/* Header */}
+      <div className="p-5 flex items-center gap-3 border-b border-border">
+        <div className="shrink-0">
+          {authorAvatarSrc ? (
+            <img src={authorAvatarSrc} alt={authorName}
+              className="w-11 h-11 rounded-full object-cover" />
+          ) : (
+            <div className="w-11 h-11 rounded-full bg-foreground/10 flex items-center justify-center border border-border font-semibold text-foreground/60">
+              {authorName[0]}
+            </div>
+          )}
+        </div>
+        <div>
+          <p className="font-semibold text-foreground">{authorName}</p>
+          <div className="flex items-center gap-1.5 text-[11px] text-foreground/40 font-semibold uppercase tracking-wider mt-0.5">
+            <span>{timeAgo(post.created_at)}</span>
+            <span>·</span>
+            {privacy.icon}
+            <span>{privacy.label}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Text content */}
+      {post.content && (
+        <div className="px-5 py-4">
+          <p className="text-base text-foreground/85 leading-relaxed whitespace-pre-wrap break-words">
+            {post.content}
+          </p>
+        </div>
+      )}
+
+      {/* Media */}
+      {post.image_path && (
+        isVideo ? (
+          <div className="bg-foreground/5">
+            <video
+              src={`${API_URL}${post.image_path}`}
+              controls
+              className="w-full max-h-[420px]"
+            />
+          </div>
+        ) : (
+          <div className="bg-foreground/5">
+            <img
+              src={`${API_URL}${post.image_path}`}
+              alt="post"
+              className="w-full object-contain max-h-[420px]"
+            />
+          </div>
+        )
+      )}
+
+      {/* Action bar */}
+      <div className="px-5 py-4 flex items-center gap-5 border-t border-border">
+        <button
+          onClick={handleLike}
+          disabled={likeLoading}
+          className="flex items-center gap-2 text-muted hover:text-primary transition-colors group disabled:opacity-50"
+        >
+          <Heart className={`w-6 h-6 transition-all ${isLiked ? "fill-primary text-primary scale-110" : "group-hover:scale-110"}`} />
+          <span className="text-sm font-bold">{likes > 0 ? likes : ""}</span>
+        </button>
+
+        <button className="flex items-center gap-2 text-muted hover:text-primary transition-colors group">
+          <MessageSquare className="w-6 h-6 group-hover:scale-110 transition-transform" />
+          <span className="text-sm font-bold">{post.comments_count > 0 ? post.comments_count : "0"}</span>
+        </button>
+
+        <button
+          onClick={handleShare}
+          className="ml-auto text-muted hover:text-primary transition-colors"
+        >
+          <Share2 className="w-6 h-6" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /* ─────────────────────────────────────────────────────────── */
 /*  Person row inside followers / following list               */
@@ -125,22 +404,32 @@ export default function ProfilePage() {
   const router = useRouter();
   const usernameParam = params.username as string;
 
-  // The logged-in user
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  // The profile being viewed (own = User, other = PublicProfile)
   const [profileUser, setProfileUser] = useState<User | PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  // Follow state for OTHER user's profile header button
   const [headerFollowStatus, setHeaderFollowStatus] = useState<FollowStatus>("none");
   const [headerFollowBusy, setHeaderFollowBusy] = useState(false);
-
-  // Privacy toggle (own profile only)
   const [togglingPrivacy, setTogglingPrivacy] = useState(false);
 
+  // Tabs
+  const [activeTab, setActiveTab] = useState<Tab>("posts");
+
+  // Posts tab state
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [postsOffset, setPostsOffset] = useState(0);
+  const [postsHasMore, setPostsHasMore] = useState(true);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsInitialized, setPostsInitialized] = useState(false);
+  const postsScrollRef = useRef<HTMLDivElement>(null);
+
+  // Activity tab state
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsAnimKey, setStatsAnimKey] = useState(0);
+
   // Followers / following lists
-  const [activeTab, setActiveTab] = useState<Tab>("followers");
   const [followers, setFollowers] = useState<UserSearchResult[]>([]);
   const [following, setFollowing] = useState<UserSearchResult[]>([]);
   const [listLoading, setListLoading] = useState(true);
@@ -160,11 +449,9 @@ export default function ProfilePage() {
       setCurrentUser(me);
 
       if (usernameParam === "me" || usernameParam === me.username) {
-        // Own profile
         setProfileUser(me);
         setLoading(false);
       } else {
-        // Another user's profile — fetch from API
         const data = await fetchUserProfile(usernameParam);
         if (!data) {
           setNotFound(true);
@@ -193,7 +480,6 @@ export default function ProfilePage() {
       ]);
       setFollowers(frsRes.followers ?? []);
       setFollowing(fngRes.following ?? []);
-      // For own profile, update counts from list length
       if (isOwnProfile) {
         setFollowersCount(frsRes.count ?? 0);
         setFollowingCount(fngRes.count ?? 0);
@@ -201,19 +487,85 @@ export default function ProfilePage() {
       setListLoading(false);
     }
     loadLists();
-  }, [profileUser]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profileUser]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Load posts (first page) ── */
+  useEffect(() => {
+    if (!profileUser || postsInitialized) return;
+    const target = (profileUser as User).username ?? (profileUser as PublicProfile).username;
+    if (!target) return;
+
+    async function loadPosts() {
+      setPostsLoading(true);
+      try {
+        const res = await getUserPosts(target, 0, 10);
+        setPosts(res.posts);
+        setPostsOffset(res.posts.length);
+        setPostsHasMore(res.has_more);
+        setPostsInitialized(true);
+      } catch {
+        setPostsInitialized(true);
+      } finally {
+        setPostsLoading(false);
+      }
+    }
+    loadPosts();
+  }, [profileUser]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Load more posts on scroll ── */
+  const loadMorePosts = async () => {
+    if (postsLoading || !postsHasMore) return;
+    const target = (profileUser as User)?.username ?? (profileUser as PublicProfile)?.username;
+    if (!target) return;
+    setPostsLoading(true);
+    try {
+      const res = await getUserPosts(target, postsOffset, 10);
+      setPosts((prev) => [...prev, ...res.posts]);
+      setPostsOffset((o) => o + res.posts.length);
+      setPostsHasMore(res.has_more);
+    } catch {
+      // ignore
+    } finally {
+      setPostsLoading(false);
+    }
+  };
+
+  /* ── Scroll-to-load for posts ── */
+  useEffect(() => {
+    const el = postsScrollRef.current;
+    if (!el) return;
+    const handler = () => {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+        loadMorePosts();
+      }
+    };
+    el.addEventListener("scroll", handler);
+    return () => el.removeEventListener("scroll", handler);
+  }); // no dep array — re-runs each render to capture fresh state
+
+  /* ── Load stats when Activity tab opens ── */
+  useEffect(() => {
+    if (activeTab !== "activity" || !profileUser) return;
+    // Re-trigger animation every time the tab is visited
+    setStatsAnimKey((k) => k + 1);
+    if (stats) return; // already loaded — just replay animation
+    const username = (profileUser as User).username ?? (profileUser as PublicProfile).username;
+    setStatsLoading(true);
+    getUserStats(username).then((s) => {
+      setStats(s);
+      setStatsLoading(false);
+    });
+  }, [activeTab, profileUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Sync profile when settings are saved ── */
   useEffect(() => {
     if (!isOwnProfile) return;
-
     const handleUserUpdated = (e: Event) => {
       const updated = (e as CustomEvent).detail as User;
       if (!updated) return;
       setCurrentUser(updated);
       setProfileUser(updated);
     };
-
     window.addEventListener("userUpdated", handleUserUpdated);
     return () => window.removeEventListener("userUpdated", handleUserUpdated);
   }, [isOwnProfile]);
@@ -222,7 +574,7 @@ export default function ProfilePage() {
   const handlePrivacyToggle = async () => {
     if (!currentUser || togglingPrivacy) return;
     const u = profileUser as User;
-    const currentIsPublic = u.isPublic === true; // explicit boolean, never undefined
+    const currentIsPublic = u.isPublic === true;
     const newIsPublic = !currentIsPublic;
     setTogglingPrivacy(true);
     setProfileUser((p) => p ? { ...p, isPublic: newIsPublic } : p);
@@ -249,7 +601,7 @@ export default function ProfilePage() {
     setTogglingPrivacy(false);
   };
 
-  /* ── Follow / Unfollow from header button (other user's profile) ── */
+  /* ── Follow / Unfollow from header button ── */
   const handleHeaderFollow = async () => {
     if (headerFollowBusy || !profileUser) return;
     const target = (profileUser as PublicProfile).username;
@@ -260,7 +612,6 @@ export default function ProfilePage() {
       setHeaderFollowBusy(true);
       const res = await unfollowUser(target);
       if (res.success) {
-        // Re-fetch the profile — if account is private we'll get isLocked:true back
         const fresh = await fetchUserProfile(usernameParam);
         if (fresh) {
           setProfileUser(fresh);
@@ -278,7 +629,6 @@ export default function ProfilePage() {
       if (res.success) {
         const next = (res.status ?? "accepted") as FollowStatus;
         setHeaderFollowStatus(next);
-        // Re-fetch so all profile data (including full profile for accepted) is fresh
         const fresh = await fetchUserProfile(usernameParam);
         if (fresh) {
           setProfileUser(fresh);
@@ -293,7 +643,7 @@ export default function ProfilePage() {
     setHeaderFollowBusy(false);
   };
 
-  /* ── Follow change propagated from list rows ── */
+  /* ── Follow change from list rows ── */
   const handleFollowChange = (
     targetUsername: string,
     prev: FollowStatus,
@@ -313,16 +663,15 @@ export default function ProfilePage() {
     }
   };
 
-  /* ── Real-time follow updates via WebSocket ── */
+  /* ── Real-time follow updates (own profile) ── */
   useEffect(() => {
-    if (!isOwnProfile) return; // only own profile needs live follower updates
+    if (!isOwnProfile) return;
 
     const handleWsFollowUpdate = (data: any) => {
       if (data.type !== "follow_update") return;
       const d = data.data;
 
       if (d.status === "accepted") {
-        // Someone just followed us — add them to the list
         setFollowers((prev) => {
           if (prev.some((u) => u.userId === d.followerId)) return prev;
           const newUser: UserSearchResult = {
@@ -341,7 +690,6 @@ export default function ProfilePage() {
         });
         setFollowersCount((c) => c + 1);
       } else if (d.status === "none") {
-        // Someone unfollowed us — remove from list
         setFollowers((prev) => prev.filter((u) => u.userId !== d.followerId));
         setFollowersCount((c) => Math.max(0, c - 1));
       }
@@ -351,7 +699,7 @@ export default function ProfilePage() {
     return () => { ws.off("follow_update", handleWsFollowUpdate); };
   }, [isOwnProfile]);
 
-  /* ── Real-time privacy changes for other users' profiles ── */
+  /* ── Real-time privacy changes for other profiles ── */
   useEffect(() => {
     if (isOwnProfile || !profileUser) return;
     const targetId = (profileUser as PublicProfile).userId;
@@ -359,9 +707,8 @@ export default function ProfilePage() {
     const handlePrivacyChanged = async (data: any) => {
       if (data.type !== "privacy_changed") return;
       if (data.data.userId !== targetId) return;
-      // Re-fetch — backend enforces access: returns isLocked:true for private non-followers
       const fresh = await fetchUserProfile(usernameParam);
-      if (!fresh) return; // user deleted or network error — don't change the view
+      if (!fresh) return;
       setProfileUser(fresh);
       setHeaderFollowStatus((fresh.followStatus ?? "none") as FollowStatus);
       setFollowersCount(fresh.followersCount);
@@ -406,7 +753,7 @@ export default function ProfilePage() {
     return hay.includes(searchLower);
   });
 
-  /* ── States ── */
+  /* ── Loading / not found states ── */
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-screen">
@@ -450,7 +797,6 @@ export default function ProfilePage() {
           </button>
 
           <div className="bg-surface border border-border rounded-xl p-8 flex flex-col items-center text-center gap-5">
-            {/* Avatar */}
             <div className="h-24 w-24 rounded-full bg-background border-4 border-primary/20 overflow-hidden flex items-center justify-center shrink-0">
               {lockedAvatarSrc ? (
                 <img src={lockedAvatarSrc} alt={p.username} className="h-full w-full object-cover" />
@@ -459,14 +805,12 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* Name + handle */}
             <div>
               <h1 className="text-foreground text-xl font-bold">{p.username}</h1>
               <p className="text-muted text-sm mt-0.5">{lockedName}</p>
               <p className="text-muted text-xs mt-2">{p.followersCount} Followers</p>
             </div>
 
-            {/* Lock icon + message */}
             <div className="flex flex-col items-center gap-2 py-4 border-t border-border w-full">
               <Lock className="w-8 h-8 text-muted-foreground/40" />
               <p className="text-foreground font-semibold text-sm">This account is private</p>
@@ -475,7 +819,6 @@ export default function ProfilePage() {
               </p>
             </div>
 
-            {/* Follow button */}
             <button
               onClick={handleHeaderFollow}
               disabled={headerFollowBusy}
@@ -499,6 +842,14 @@ export default function ProfilePage() {
       : headerFollowStatus === "pending"
       ? "Requested"
       : "Follow";
+
+  /* ── Tab definitions ── */
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: "posts",     label: `Posts`,                icon: <FileText  className="w-4 h-4" /> },
+    { key: "followers", label: `Followers (${followersCount})`, icon: <Users    className="w-4 h-4" /> },
+    { key: "following", label: `Following (${followingCount})`, icon: <Users    className="w-4 h-4" /> },
+    ...(isOwnProfile ? [{ key: "activity" as Tab, label: "Activity", icon: <Activity className="w-4 h-4" /> }] : []),
+  ];
 
   return (
     <div className="flex-1 flex justify-center py-8 px-4 md:px-10">
@@ -623,10 +974,11 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Content grid ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
 
-          {/* Left sidebar — About */}
+          {/* ── Left sidebar ── */}
           <aside className="flex flex-col gap-4">
+            {/* About */}
             <div className="bg-surface border border-border rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b border-border">
                 <h3 className="text-foreground font-bold text-base">About</h3>
@@ -638,7 +990,6 @@ export default function ProfilePage() {
                     <p className="text-foreground text-sm leading-relaxed">{getField("aboutMe")}</p>
                   </div>
                 )}
-                {/* Date of birth — own profile only */}
                 {isOwnProfile && (profileUser as User)?.dateOfBirth && (
                   <div className="flex flex-col gap-1">
                     <p className="text-muted text-xs font-bold uppercase tracking-wider">Birthday</p>
@@ -648,7 +999,6 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 )}
-                {/* Email — own profile only */}
                 {isOwnProfile && (profileUser as User)?.email && (
                   <div className="flex flex-col gap-1">
                     <p className="text-muted text-xs font-bold uppercase tracking-wider">Email</p>
@@ -668,6 +1018,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
+            {/* Member since */}
             {memberSince && (
               <div className="bg-primary/5 border border-primary/20 rounded-xl p-5">
                 <p className="text-primary text-xs font-bold uppercase tracking-wider mb-3">Member</p>
@@ -682,76 +1033,239 @@ export default function ProfilePage() {
             )}
           </aside>
 
-          {/* Right — Followers / Following list */}
-          <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col">
+          {/* ── Right panel — tabbed content ── */}
+          <div className="bg-surface border border-border rounded-xl overflow-hidden flex flex-col h-[620px]">
 
-            {/* Tabs */}
-            <div className="flex border-b border-border px-6 gap-6 shrink-0">
-              {(["followers", "following"] as Tab[]).map((tab) => (
+            {/* Tab bar */}
+            <div className="flex border-b border-border px-2 shrink-0 overflow-x-auto">
+              {tabs.map((tab) => (
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex items-center border-b-[3px] pb-[13px] pt-4 text-sm font-bold leading-normal transition-colors capitalize ${
-                    activeTab === tab
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-2 px-4 border-b-[3px] pb-[13px] pt-4 text-sm font-bold leading-normal whitespace-nowrap transition-colors ${
+                    activeTab === tab.key
                       ? "border-primary text-primary"
                       : "border-transparent text-muted hover:text-foreground"
                   }`}
                 >
-                  {tab === "followers"
-                    ? `Followers (${followersCount})`
-                    : `Following (${followingCount})`}
+                  {tab.icon}
+                  {tab.label}
                 </button>
               ))}
             </div>
 
-            {/* Search bar */}
-            <div className="p-4 border-b border-border shrink-0">
-              <div className="flex items-center gap-3 bg-background border border-border rounded-lg px-3 h-10">
-                <Search className="w-4 h-4 text-muted shrink-0" />
-                <input
-                  value={listSearch}
-                  onChange={(e) => setListSearch(e.target.value)}
-                  placeholder={`Search ${activeTab}…`}
-                  className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted outline-none"
-                />
-              </div>
-            </div>
-
-            {/* List */}
-            {listLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              </div>
-            ) : displayedList.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
-                <Users className="w-10 h-10 text-muted/40" />
-                <p className="text-foreground font-semibold text-sm">
-                  {listSearch
-                    ? "No results found"
-                    : activeTab === "followers"
-                    ? "No followers yet"
-                    : "Not following anyone yet"}
-                </p>
-                <p className="text-muted text-xs max-w-xs">
-                  {listSearch
-                    ? "Try a different search term."
-                    : activeTab === "followers"
-                    ? "When people follow this account they'll appear here."
-                    : "Accounts this person follows will appear here."}
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-border overflow-y-auto">
-                {displayedList.map((person) => (
-                  <PersonRow
-                    key={person.userId}
-                    person={person}
-                    currentUserId={currentUser?.userId}
-                    onFollowChange={handleFollowChange}
-                  />
-                ))}
+            {/* ── Posts tab ── */}
+            {activeTab === "posts" && (
+              <div
+                ref={postsScrollRef}
+                className="flex-1 overflow-y-auto p-4 flex flex-col gap-4"
+              >
+                {postsLoading && posts.length === 0 ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  </div>
+                ) : posts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                    <FileText className="w-10 h-10 text-muted/40" />
+                    <p className="text-foreground font-semibold text-sm">No posts yet</p>
+                    <p className="text-muted text-xs max-w-xs">
+                      {isOwnProfile
+                        ? "Share your first post to see it here."
+                        : "This user hasn't posted anything yet."}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {posts.map((post) => (
+                      <ProfilePostCard
+                        key={post.id}
+                        post={post}
+                        authorName={displayName}
+                        authorAvatarSrc={avatarSrc}
+                      />
+                    ))}
+                    {postsLoading && (
+                      <div className="flex justify-center py-4">
+                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                      </div>
+                    )}
+                    {!postsHasMore && posts.length > 0 && (
+                      <p className="text-center text-muted text-xs py-4">
+                        All posts loaded
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             )}
+
+            {/* ── Followers / Following tab ── */}
+            {(activeTab === "followers" || activeTab === "following") && (
+              <>
+                {/* Search bar */}
+                <div className="px-4 py-3 border-b border-border shrink-0">
+                  <div className={`flex items-center gap-2.5 bg-background border rounded-xl px-3.5 h-11 transition-colors ${listSearch ? "border-primary/50 shadow-[0_0_0_3px_rgba(0,209,178,0.08)]" : "border-border hover:border-border/80 focus-within:border-primary/50 focus-within:shadow-[0_0_0_3px_rgba(0,209,178,0.08)]"}`}>
+                    <Search className={`w-4 h-4 shrink-0 transition-colors ${listSearch ? "text-primary" : "text-muted"}`} />
+                    <input
+                      value={listSearch}
+                      onChange={(e) => setListSearch(e.target.value)}
+                      placeholder={`Search ${activeTab}…`}
+                      className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted/60 outline-none"
+                    />
+                    {listSearch && (
+                      <button
+                        onClick={() => setListSearch("")}
+                        className="shrink-0 w-5 h-5 rounded-full bg-foreground/10 hover:bg-foreground/20 flex items-center justify-center transition-colors"
+                      >
+                        <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 text-muted fill-current">
+                          <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {listSearch && (
+                    <p className="text-xs text-muted mt-2 px-1">
+                      {displayedList.length > 0
+                        ? `${displayedList.length} result${displayedList.length !== 1 ? "s" : ""} for "${listSearch}"`
+                        : `No results for "${listSearch}"`}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto divide-y divide-border">
+                  {listLoading ? (
+                    <div className="flex items-center justify-center py-16">
+                      <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    </div>
+                  ) : displayedList.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
+                      {listSearch ? (
+                        <>
+                          <div className="w-14 h-14 rounded-2xl bg-foreground/5 flex items-center justify-center">
+                            <Search className="w-6 h-6 text-muted/40" />
+                          </div>
+                          <div>
+                            <p className="text-foreground font-semibold text-sm">
+                              No user named &ldquo;{listSearch}&rdquo;
+                            </p>
+                            <p className="text-muted text-xs mt-1">
+                              Try a different name or username.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setListSearch("")}
+                            className="text-xs text-primary hover:underline font-semibold mt-1"
+                          >
+                            Clear search
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Users className="w-10 h-10 text-muted/40" />
+                          <p className="text-foreground font-semibold text-sm">
+                            {activeTab === "followers" ? "No followers yet" : "Not following anyone yet"}
+                          </p>
+                          <p className="text-muted text-xs max-w-xs">
+                            {activeTab === "followers"
+                              ? "When people follow this account they'll appear here."
+                              : "Accounts this person follows will appear here."}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    displayedList.map((person) => (
+                      <PersonRow
+                        key={person.userId}
+                        person={person}
+                        currentUserId={currentUser?.userId}
+                        onFollowChange={handleFollowChange}
+                      />
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* ── Activity tab ── */}
+            {activeTab === "activity" && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {statsLoading && !stats ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  </div>
+                ) : stats ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-8 px-6 py-6">
+
+                    {/* Header */}
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-primary animate-pulse" />
+                        <p className="text-foreground font-black text-sm uppercase tracking-widest">
+                          Activity Overview
+                        </p>
+                        <Zap className="w-4 h-4 text-primary animate-pulse" />
+                      </div>
+                      <p className="text-muted text-xs">
+                        {displayName}&apos;s stats at a glance
+                      </p>
+                    </div>
+
+                    {/* Rings row */}
+                    <div className="flex items-center justify-around w-full gap-4">
+                      <StatRing
+                        value={stats.postsCount}
+                        maxValue={Math.max(stats.postsCount, stats.likesReceived, stats.commentsReceived, 1)}
+                        color="#00d1b2"
+                        glowColor="rgba(0,209,178,0.5)"
+                        label="Posts"
+                        icon={FileText}
+                        animKey={statsAnimKey}
+                        delay={0}
+                      />
+                      <StatRing
+                        value={stats.likesReceived}
+                        maxValue={Math.max(stats.postsCount, stats.likesReceived, stats.commentsReceived, 1)}
+                        color="#f43f5e"
+                        glowColor="rgba(244,63,94,0.5)"
+                        label="Likes"
+                        icon={Heart}
+                        animKey={statsAnimKey}
+                        delay={200}
+                      />
+                      <StatRing
+                        value={stats.commentsReceived}
+                        maxValue={Math.max(stats.postsCount, stats.likesReceived, stats.commentsReceived, 1)}
+                        color="#60a5fa"
+                        glowColor="rgba(96,165,250,0.5)"
+                        label="Comments"
+                        icon={MessageSquare}
+                        animKey={statsAnimKey}
+                        delay={400}
+                      />
+                    </div>
+
+                    {/* Total engagement pill */}
+                    <div className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-foreground/5 border border-border">
+                      <Activity className="w-3.5 h-3.5 text-primary" />
+                      <span className="text-xs text-muted font-semibold">
+                        Total engagement —{" "}
+                        <span className="text-foreground font-black">
+                          {(stats.likesReceived + stats.commentsReceived).toLocaleString()}
+                        </span>{" "}
+                        interactions
+                      </span>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="text-muted text-sm">Could not load stats.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
         </div>
       </div>
