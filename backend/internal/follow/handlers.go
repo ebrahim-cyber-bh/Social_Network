@@ -5,6 +5,7 @@ import (
 	"backend/internal/models"
 	"backend/internal/utils"
 	"backend/internal/ws"
+	"encoding/json"
 	"net/http"
 	"time"
 )
@@ -120,6 +121,80 @@ func UnfollowHandler(w http.ResponseWriter, r *http.Request) {
 		"status":  "none",
 		"message": "Unfollowed",
 	})
+}
+
+// GetFollowRequestsHandler handles GET /api/follow/requests
+func GetFollowRequestsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	userID, ok := utils.GetUserIDFromContext(r)
+	if !ok {
+		utils.RespondJSON(w, http.StatusUnauthorized, models.GenericResponse{Success: false, Message: "Unauthorized"})
+		return
+	}
+	requests, err := queries.GetPendingFollowRequests(userID)
+	if err != nil {
+		utils.RespondJSON(w, http.StatusInternalServerError, models.GenericResponse{Success: false, Message: "Failed to fetch requests"})
+		return
+	}
+	if requests == nil {
+		requests = []models.UserSearchResult{}
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "requests": requests})
+}
+
+// HandleFollowRequestHandler handles POST /api/follow/requests/handle
+// Body: { "username": "...", "action": "accept" | "decline" }
+func HandleFollowRequestHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	userID, ok := utils.GetUserIDFromContext(r)
+	if !ok {
+		utils.RespondJSON(w, http.StatusUnauthorized, models.GenericResponse{Success: false, Message: "Unauthorized"})
+		return
+	}
+	var body struct {
+		Username string `json:"username"`
+		Action   string `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Action != "accept" && body.Action != "decline") {
+		utils.RespondJSON(w, http.StatusBadRequest, models.GenericResponse{Success: false, Message: "Invalid request"})
+		return
+	}
+	requester, err := queries.GetUserByIdentifier(body.Username)
+	if err != nil {
+		utils.RespondJSON(w, http.StatusNotFound, models.GenericResponse{Success: false, Message: "User not found"})
+		return
+	}
+	if body.Action == "accept" {
+		err = queries.AcceptFollowRequest(requester.ID, userID)
+	} else {
+		err = queries.DeclineFollowRequest(requester.ID, userID)
+	}
+	if err != nil {
+		utils.RespondJSON(w, http.StatusInternalServerError, models.GenericResponse{Success: false, Message: "Failed to handle request"})
+		return
+	}
+	// Notify the requester
+	target, err := queries.GetUserByID(userID)
+	if err == nil {
+		status := "accepted"
+		if body.Action == "decline" {
+			status = "none"
+		}
+		ws.SendNotificationToUser(requester.ID, models.NotificationMessage{
+			Type: "follow_update",
+			Data: map[string]interface{}{
+				"followerId":        requester.ID,
+				"followerUsername":  requester.Username,
+				"followerFirstName": requester.FirstName,
+				"followerLastName":  requester.LastName,
+				"followerAvatar":    requester.Avatar,
+				"status":            status,
+				"targetUsername":    target.Username,
+			},
+			Timestamp: time.Now(),
+		})
+	}
+	utils.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "action": body.Action})
 }
 
 // GetFollowersHandler handles GET /api/users/{username}/followers

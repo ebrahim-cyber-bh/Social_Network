@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   Settings, Mail, Cake, ShieldCheck, Users, Globe, Lock,
   Loader2, Search, UserIcon, ArrowLeft, Heart, MessageSquare,
-  Share2, Activity, FileText, Zap,
+  Share2, Activity, FileText, Zap, Check, X, UserCheck,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/auth";
 import { updateProfile } from "@/lib/auth/update";
@@ -180,6 +180,120 @@ function InfoCard({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
+/* ── Follow requests panel ── */
+function FollowRequestsPanel({ onCountChange, onAccepted }: { onCountChange: (n: number) => void; onAccepted: () => void }) {
+  const [requests, setRequests] = useState<UserSearchResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/follow/requests`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { setRequests(d.requests ?? []); onCountChange((d.requests ?? []).length); })
+      .finally(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real-time: new follow request arrives or requester cancels
+  useEffect(() => {
+    const handler = (data: any) => {
+      if (data.type !== "follow_update") return;
+      const d = data.data;
+      if (d.status === "pending") {
+        // New follow request — add to list if not already there
+        setRequests((prev) => {
+          if (prev.some((u) => u.userId === d.followerId)) return prev;
+          const newReq: UserSearchResult = {
+            userId: d.followerId,
+            username: d.followerUsername,
+            firstName: d.followerFirstName,
+            lastName: d.followerLastName,
+            avatar: d.followerAvatar || "",
+            nickname: "",
+            aboutMe: "",
+            isPublic: true,
+            followStatus: "none",
+            followsMe: false,
+          };
+          const next = [newReq, ...prev];
+          onCountChange(next.length);
+          return next;
+        });
+      } else if (d.status === "none") {
+        // Requester cancelled — remove from list
+        setRequests((prev) => {
+          const next = prev.filter((u) => u.userId !== d.followerId);
+          onCountChange(next.length);
+          return next;
+        });
+      }
+    };
+    ws.on("follow_update", handler);
+    return () => ws.off("follow_update", handler);
+  }, [onCountChange]);
+
+  const handle = async (username: string, action: "accept" | "decline") => {
+    setBusy((b) => ({ ...b, [username]: true }));
+    await fetch(`${API_URL}/api/follow/requests/handle`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, action }),
+    });
+    setRequests((prev) => {
+      const next = prev.filter((u) => u.username !== username);
+      onCountChange(next.length);
+      return next;
+    });
+    if (action === "accept") onAccepted();
+    setBusy((b) => ({ ...b, [username]: false }));
+  };
+
+  if (loading) return <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-primary" /></div>;
+  if (requests.length === 0) return (
+    <p className="text-xs text-muted/60 text-center py-3">No pending requests</p>
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      {requests.map((u) => {
+        const avatarSrc = u.avatar ? `${API_URL}${u.avatar}` : null;
+        const name = `${u.firstName} ${u.lastName}`.trim() || u.username;
+        return (
+          <div key={u.userId} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-foreground/5 transition-colors">
+            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 bg-primary/10 flex items-center justify-center">
+              {avatarSrc
+                ? <img src={avatarSrc} alt={name} className="w-full h-full object-cover" />
+                : <UserIcon className="w-5 h-5 text-muted" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-foreground truncate">{name}</p>
+              <p className="text-[10px] text-muted truncate">@{u.username}</p>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <button
+                onClick={() => handle(u.username, "accept")}
+                disabled={busy[u.username]}
+                className="w-7 h-7 rounded-full bg-primary/15 hover:bg-primary/30 flex items-center justify-center transition-colors"
+                title="Accept"
+              >
+                {busy[u.username] ? <Loader2 className="w-3 h-3 animate-spin text-primary" /> : <Check className="w-3.5 h-3.5 text-primary" />}
+              </button>
+              <button
+                onClick={() => handle(u.username, "decline")}
+                disabled={busy[u.username]}
+                className="w-7 h-7 rounded-full bg-foreground/8 hover:bg-destructive/20 flex items-center justify-center transition-colors"
+                title="Decline"
+              >
+                <X className="w-3.5 h-3.5 text-muted hover:text-destructive" />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── Person card (grid layout for followers/following) ── */
 function PersonCard({ person, currentUserId, onFollowChange }: {
   person: UserSearchResult;
@@ -261,6 +375,7 @@ export default function ProfilePage() {
   const [togglingPrivacy, setTogglingPrivacy] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>("posts");
+  const [requestCount, setRequestCount] = useState(0);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [postsOffset, setPostsOffset] = useState(0);
@@ -337,6 +452,30 @@ export default function ProfilePage() {
     loadPosts();
   }, [profileUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Load follow request count ── */
+  useEffect(() => {
+    if (!isOwnProfile) return;
+    fetch(`${API_URL}/api/follow/requests`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setRequestCount((d.requests ?? []).length))
+      .catch(() => {});
+  }, [isOwnProfile]);
+
+  useEffect(() => {
+    if (!isOwnProfile) return;
+    const handler = (data: any) => {
+      if (data.type !== "follow_update") return;
+      const d = data.data;
+      if (d.status === "pending") {
+        setRequestCount((c) => c + 1);
+      } else if (d.status === "none" || d.status === "accepted") {
+        setRequestCount((c) => Math.max(0, c - 1));
+      }
+    };
+    ws.on("follow_update", handler);
+    return () => ws.off("follow_update", handler);
+  }, [isOwnProfile]);
+
   /* ── Load more posts ── */
   const loadMorePosts = async () => {
     if (postsLoading || !postsHasMore) return;
@@ -404,6 +543,8 @@ export default function ProfilePage() {
       setProfileUser(updated);
       localStorage.setItem("currentUser", JSON.stringify(updated));
       window.dispatchEvent(new CustomEvent("userUpdated", { detail: updated }));
+      // Switching to public auto-accepts all pending requests — clear the count
+      if (newIsPublic) setRequestCount(0);
     } else {
       setProfileUser((p) => p ? { ...p, isPublic: !newIsPublic } : p);
     }
@@ -508,6 +649,8 @@ export default function ProfilePage() {
     ? new Date(getField("createdAt") as string).toLocaleDateString("en-US", { month: "short", year: "numeric" })
     : null;
 
+  const isLocked = !isOwnProfile && (profileUser as PublicProfile)?.isLocked === true;
+
   const searchLower = listSearch.toLowerCase();
   const displayedList = (activeTab === "followers" ? followers : following).filter((u) => {
     const hay = `${u.firstName} ${u.lastName} ${u.username} ${u.nickname ?? ""}`.toLowerCase();
@@ -516,8 +659,10 @@ export default function ProfilePage() {
 
   const tabs: { key: Tab; label: string; badge?: number }[] = [
     { key: "posts",     label: "Posts" },
-    { key: "followers", label: "Followers", badge: followersCount },
-    { key: "following", label: "Following", badge: followingCount },
+    ...(!isLocked ? [
+      { key: "followers" as Tab, label: "Followers", badge: followersCount },
+      { key: "following" as Tab, label: "Following", badge: followingCount },
+    ] : []),
     ...(isOwnProfile ? [{ key: "activity" as Tab, label: "Activity" }] : []),
   ];
 
@@ -536,42 +681,6 @@ export default function ProfilePage() {
       </div>
     </div>
   );
-
-  /* ── Locked profile ── */
-  const isLocked = !isOwnProfile && (profileUser as PublicProfile)?.isLocked === true;
-  if (isLocked) {
-    const p = profileUser as PublicProfile;
-    const lockedAvatarSrc = p.avatar ? `${API_URL}${p.avatar}` : null;
-    const lockedFollowLabel = headerFollowStatus === "accepted" ? "Unfollow" : headerFollowStatus === "pending" ? "Requested" : "Follow";
-    return (
-      <div className="flex-1 flex justify-center py-8 px-4">
-        <div className="max-w-md w-full flex flex-col gap-6">
-          <button onClick={() => router.back()} className="flex items-center gap-2 self-start text-sm font-semibold text-muted hover:text-foreground transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back
-          </button>
-          <div className="bg-surface border border-border rounded-xl p-8 flex flex-col items-center text-center gap-5">
-            <div className="h-24 w-24 rounded-full bg-background border-4 border-primary/20 overflow-hidden flex items-center justify-center shrink-0">
-              {lockedAvatarSrc ? <img src={lockedAvatarSrc} alt={p.username} className="h-full w-full object-cover" /> : <UserIcon className="w-10 h-10 text-muted-foreground/40" />}
-            </div>
-            <div>
-              <h1 className="text-foreground text-xl font-bold">{p.username}</h1>
-              <p className="text-muted text-sm mt-0.5">{p.nickname ? `@${p.nickname}` : `@${p.username}`}</p>
-              <p className="text-muted text-xs mt-2">{p.followersCount} Followers</p>
-            </div>
-            <div className="flex flex-col items-center gap-2 py-4 border-t border-border w-full">
-              <Lock className="w-8 h-8 text-muted-foreground/40" />
-              <p className="text-foreground font-semibold text-sm">This account is private</p>
-              <p className="text-muted text-xs max-w-xs">Follow this account to see their photos and other content.</p>
-            </div>
-            <button onClick={handleHeaderFollow} disabled={headerFollowBusy}
-              className={`flex items-center justify-center gap-2 h-10 px-8 rounded-lg text-sm font-semibold transition-colors ${headerFollowStatus === "none" ? "bg-primary text-black hover:bg-primary/90" : "bg-surface border border-border text-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"}`}>
-              {headerFollowBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : lockedFollowLabel}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const headerFollowLabel = headerFollowStatus === "accepted" ? "Unfollow" : headerFollowStatus === "pending" ? "Requested" : "Follow";
 
@@ -593,47 +702,130 @@ export default function ProfilePage() {
 
         {/* ══ COVER + HEADER ══════════════════════════════════════ */}
         <div className="relative">
-          {/* Cover gradient */}
+          {/* Animated cover */}
           <div
-            className="h-44 md:h-52 w-full"
-            style={{ background: "linear-gradient(135deg, #000d0b 0%, #003d36 45%, #001a3a 75%, #000d0b 100%)" }}
+            className="h-44 md:h-52 w-full overflow-hidden relative"
+            style={{ background: "#020c0a" }}
           >
-            {/* Action area — absolutely centered in the cover */}
-            {isOwnProfile ? (
-              <div className="absolute bottom-4 right-6 md:right-8 flex items-center gap-3">
-                <div className="bg-surface/80 backdrop-blur-sm border border-border p-3 rounded-xl flex items-center gap-3">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-muted leading-none">Privacy</p>
-                    <p className="text-sm text-foreground mt-0.5">{isPublic ? "Public" : "Private"}</p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={isPublic}
-                    onClick={handlePrivacyToggle}
-                    disabled={togglingPrivacy}
-                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${isPublic ? "bg-primary" : "bg-foreground/20"}`}
-                  >
-                    {togglingPrivacy
-                      ? <Loader2 className="w-3 h-3 animate-spin text-white absolute left-1/2 -translate-x-1/2" />
-                      : <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${isPublic ? "translate-x-5" : "translate-x-0.5"}`} />
-                    }
-                  </button>
-                </div>
-                <button onClick={() => router.push("/settings")}
-                  className="flex items-center gap-2 h-10 px-4 rounded-lg bg-surface border border-border text-foreground text-sm font-semibold hover:bg-background transition-colors">
-                  <Settings className="w-4 h-4" /> Edit Profile
-                </button>
-              </div>
-            ) : (
-              <button onClick={handleHeaderFollow} disabled={headerFollowBusy}
-                className={`absolute bottom-4 right-6 md:right-8 flex items-center justify-center gap-2 h-10 px-6 rounded-lg text-sm font-semibold transition-colors ${headerFollowStatus === "none" ? "bg-primary text-black hover:bg-primary/90" : "bg-surface border border-border text-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"}`}>
-                {headerFollowBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : headerFollowLabel}
-              </button>
-            )}
+            {/* z-0: base layers */}
+            <div className="absolute inset-0" style={{ zIndex: 0,
+              background: "linear-gradient(135deg, #000d0b 0%, #002e28 40%, #001830 75%, #000d0b 100%)"
+            }} />
+
+            {/* Orb 1 — teal */}
+            <div className="absolute rounded-full pointer-events-none" style={{ zIndex: 1,
+              width: "320px", height: "320px", top: "-80px", left: "15%",
+              background: "radial-gradient(circle, rgba(0,209,178,0.18) 0%, transparent 70%)",
+              animation: "drift1 9s ease-in-out infinite",
+            }} />
+            {/* Orb 2 — blue */}
+            <div className="absolute rounded-full pointer-events-none" style={{ zIndex: 1,
+              width: "260px", height: "260px", top: "-40px", right: "20%",
+              background: "radial-gradient(circle, rgba(56,130,246,0.14) 0%, transparent 70%)",
+              animation: "drift2 12s ease-in-out infinite",
+            }} />
+            {/* Orb 3 — accent */}
+            <div className="absolute rounded-full pointer-events-none" style={{ zIndex: 1,
+              width: "150px", height: "150px", bottom: "-20px", left: "45%",
+              background: "radial-gradient(circle, rgba(0,209,178,0.12) 0%, transparent 70%)",
+              animation: "drift3 7s ease-in-out infinite",
+            }} />
+
+            {/* Grid lines */}
+            <div className="absolute inset-0 pointer-events-none opacity-[0.04]" style={{ zIndex: 2,
+              backgroundImage: "linear-gradient(rgba(0,209,178,1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,209,178,1) 1px, transparent 1px)",
+              backgroundSize: "48px 48px",
+            }} />
+
+            {/* Particles */}
+            {[
+              { x:"12%", y:"20%", d:"6s", delay:"0s",   size:"2px" },
+              { x:"28%", y:"60%", d:"8s", delay:"1s",   size:"1.5px" },
+              { x:"44%", y:"35%", d:"5s", delay:"2s",   size:"2px" },
+              { x:"60%", y:"70%", d:"9s", delay:"0.5s", size:"1px" },
+              { x:"72%", y:"25%", d:"7s", delay:"3s",   size:"2px" },
+              { x:"85%", y:"55%", d:"6s", delay:"1.5s", size:"1.5px" },
+              { x:"20%", y:"80%", d:"10s",delay:"2.5s", size:"1px" },
+              { x:"50%", y:"15%", d:"7s", delay:"0.8s", size:"2px" },
+              { x:"90%", y:"40%", d:"8s", delay:"3.5s", size:"1.5px" },
+              { x:"35%", y:"50%", d:"5s", delay:"1.2s", size:"1px" },
+            ].map((p, i) => (
+              <div key={i} className="absolute rounded-full pointer-events-none" style={{
+                zIndex: 2, left: p.x, top: p.y,
+                width: p.size, height: p.size,
+                background: i % 2 === 0 ? "rgba(0,209,178,0.7)" : "rgba(96,165,250,0.6)",
+                boxShadow: i % 2 === 0 ? "0 0 4px rgba(0,209,178,0.8)" : "0 0 4px rgba(96,165,250,0.8)",
+                animation: `particle ${p.d} ease-in-out infinite`,
+                animationDelay: p.delay,
+              }} />
+            ))}
+
+            {/* Bottom fade */}
+            <div className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none" style={{ zIndex: 3,
+              background: "linear-gradient(to bottom, transparent, #09090b)"
+            }} />
+
+            <style>{`
+              @keyframes drift1 {
+                0%,100% { transform: translate(0,0) scale(1); }
+                33%      { transform: translate(30px,20px) scale(1.05); }
+                66%      { transform: translate(-20px,10px) scale(0.97); }
+              }
+              @keyframes drift2 {
+                0%,100% { transform: translate(0,0) scale(1); }
+                40%     { transform: translate(-25px,15px) scale(1.08); }
+                70%     { transform: translate(15px,-10px) scale(0.95); }
+              }
+              @keyframes drift3 {
+                0%,100% { transform: translate(0,0); }
+                50%     { transform: translate(-18px,-12px) scale(1.1); }
+              }
+              @keyframes particle {
+                0%,100% { transform: translate(0,0); opacity: 0.7; }
+                25%     { transform: translate(6px,-8px); opacity: 1; }
+                50%     { transform: translate(-4px,-14px); opacity: 0.5; }
+                75%     { transform: translate(8px,-6px); opacity: 0.9; }
+              }
+            `}</style>
+
           </div>
 
           {/* Profile info row */}
-          <div className="px-6 md:px-8 -mt-14 pb-6 flex flex-col md:flex-row md:items-end gap-4">
+          <div className="relative px-6 md:px-8 -mt-14 pb-6 flex flex-col md:flex-row md:items-end gap-4" style={{ zIndex: 10 }}>
+
+          {/* Action buttons — outside cover so overflow-hidden doesn't clip them */}
+          {isOwnProfile ? (
+            <div className="absolute top-4 right-6 md:right-8 flex items-center gap-3" style={{ zIndex: 20 }}>
+              <div className="bg-surface/80 backdrop-blur-sm border border-border p-3 rounded-xl flex items-center gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted leading-none">Privacy</p>
+                  <p className="text-sm text-foreground mt-0.5">{isPublic ? "Public" : "Private"}</p>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={isPublic}
+                  onClick={handlePrivacyToggle}
+                  disabled={togglingPrivacy}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${isPublic ? "bg-primary" : "bg-foreground/20"}`}
+                >
+                  {togglingPrivacy
+                    ? <Loader2 className="w-3 h-3 animate-spin text-white absolute left-1/2 -translate-x-1/2" />
+                    : <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${isPublic ? "translate-x-5" : "translate-x-0.5"}`} />
+                  }
+                </button>
+              </div>
+              <button onClick={() => router.push("/settings")}
+                className="flex items-center gap-2 h-10 px-4 rounded-lg bg-surface border border-border text-foreground text-sm font-semibold hover:bg-background transition-colors">
+                <Settings className="w-4 h-4" /> Edit Profile
+              </button>
+            </div>
+          ) : (
+            <button onClick={handleHeaderFollow} disabled={headerFollowBusy}
+              style={{ zIndex: 20 }}
+              className={`absolute top-4 right-6 md:right-8 flex items-center justify-center gap-2 h-10 px-6 rounded-lg text-sm font-semibold transition-colors ${headerFollowStatus === "none" ? "bg-primary text-black hover:bg-primary/90" : "bg-surface border border-border text-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"}`}>
+              {headerFollowBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : headerFollowLabel}
+            </button>
+          )}
 
             {/* Avatar + name */}
             <div className="flex flex-col md:flex-row md:items-end gap-4">
@@ -713,7 +905,17 @@ export default function ProfilePage() {
             {/* Posts */}
             {activeTab === "posts" && (
               <div className="flex flex-col gap-6 max-w-2xl mx-auto">
-                {postsLoading && posts.length === 0 ? (
+                {isLocked ? (
+                  <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+                    <div className="w-16 h-16 rounded-full bg-foreground/5 border border-border flex items-center justify-center">
+                      <Lock className="w-7 h-7 text-muted/50" />
+                    </div>
+                    <div>
+                      <p className="text-foreground font-semibold">This account is private</p>
+                      <p className="text-muted text-sm mt-1 max-w-xs">Follow this account to see their posts.</p>
+                    </div>
+                  </div>
+                ) : postsLoading && posts.length === 0 ? (
                   <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
                 ) : posts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
@@ -838,11 +1040,28 @@ export default function ProfilePage() {
           </div>
 
           {/* ── Info sidebar (right) ── */}
-          <div className="hidden lg:flex flex-col gap-3 w-72 shrink-0 overflow-y-auto">
-            <h3 className="text-[11px] font-bold text-foreground/40 uppercase tracking-widest pb-3 border-b border-border">About</h3>
+          <div className="hidden lg:flex flex-col gap-3 w-80 shrink-0 overflow-y-auto">
 
-            {/* Username */}
-            <InfoCard icon={UserIcon} label="Username" value={`@${getField("username") ?? ""}`} />
+            {/* Follow Requests — only when own private profile */}
+            {isOwnProfile && !isPublic && (
+              <button
+                onClick={() => router.push("/notifications")}
+                className="w-full bg-surface border border-border rounded-xl px-4 py-3 flex items-center justify-between hover:border-primary/50 hover:bg-surface/80 transition-all group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <UserCheck className="w-4 h-4 text-primary" />
+                  <span className="text-[11px] font-bold text-foreground/40 uppercase tracking-widest">Follow Requests</span>
+                </div>
+                {requestCount > 0 && (
+                  <span className="relative flex items-center justify-center">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-primary/40 animate-ping opacity-75" />
+                    <span className="text-[10px] font-bold bg-primary/20 text-primary px-2 py-0.5 rounded-full relative">{requestCount}</span>
+                  </span>
+                )}
+              </button>
+            )}
+
+            <h3 className="text-[11px] font-bold text-foreground/40 uppercase tracking-widest pb-3 border-b border-border">About</h3>
 
             {/* Nickname */}
             {getField("nickname") && (

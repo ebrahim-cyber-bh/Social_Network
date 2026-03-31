@@ -147,6 +147,50 @@ func GetFollowerIDs(userID int) ([]int, error) {
 	return ids, nil
 }
 
+// GetPendingFollowRequests returns users who have a pending follow request to userID.
+func GetPendingFollowRequests(userID int) ([]models.UserSearchResult, error) {
+	rows, err := DB.Query(`
+		SELECT
+			u.id,
+			u.username,
+			u.first_name,
+			u.last_name,
+			COALESCE(u.nickname, '')  AS nickname,
+			COALESCE(u.avatar, '')    AS avatar,
+			COALESCE(u.about_me, '') AS about_me,
+			u.is_public,
+			'none'                    AS follow_status,
+			0                         AS follows_me
+		FROM followers f
+		JOIN users u ON u.id = f.follower_id
+		WHERE f.following_id = ? AND f.status = 'pending'
+		ORDER BY u.first_name, u.last_name
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanUserResults(rows)
+}
+
+// AcceptFollowRequest promotes a single pending request to accepted.
+func AcceptFollowRequest(followerID, targetID int) error {
+	_, err := DB.Exec(
+		`UPDATE followers SET status = 'accepted' WHERE follower_id = ? AND following_id = ? AND status = 'pending'`,
+		followerID, targetID,
+	)
+	return err
+}
+
+// DeclineFollowRequest removes a pending follow request.
+func DeclineFollowRequest(followerID, targetID int) error {
+	_, err := DB.Exec(
+		`DELETE FROM followers WHERE follower_id = ? AND following_id = ? AND status = 'pending'`,
+		followerID, targetID,
+	)
+	return err
+}
+
 // GetFollowersCount returns the number of accepted followers for userID.
 func GetFollowersCount(userID int) (int, error) {
 	var count int
