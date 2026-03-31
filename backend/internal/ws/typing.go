@@ -7,17 +7,25 @@ import (
 )
 
 // HandleTyping broadcasts a group typing signal to connected clients.
-func HandleTyping(session *models.Session, msg map[string]interface{}) {
-	groupIDRaw, ok := msg["group_id"].(float64)
-	if !ok {
-		fmt.Println("Invalid or missing group_id for typing event")
+func HandleTyping(sConn *SafeConn, session *models.Session, msg map[string]interface{}) {
+	groupID, err := getPositiveIntField(msg, "group_id")
+	if err != nil {
+		fmt.Printf("Invalid typing payload: %v\n", err)
+		sendWSError(sConn, "invalid_payload", "group_id is required and must be a positive integer")
 		return
 	}
-	groupID := int(groupIDRaw)
+
+	if !allowUserAction(session.UserID, "typing", typingEventMinInterval) {
+		return
+	}
 
 	// Only group members can emit typing events for that group.
 	isMember, err := queries.IsUserGroupMember(groupID, session.UserID)
 	if err != nil || !isMember {
+		if err != nil {
+			fmt.Printf("Typing membership check failed for group %d user %d: %v\n", groupID, session.UserID, err)
+		}
+		sendWSError(sConn, "forbidden", "You are not allowed to send typing events for this group")
 		return
 	}
 
@@ -28,7 +36,7 @@ func HandleTyping(session *models.Session, msg map[string]interface{}) {
 		}
 	}
 
-	BroadcastToAll(map[string]interface{}{
+	BroadcastRawToGroup(int64(groupID), map[string]interface{}{
 		"type":      "user_typing",
 		"group_id":  groupID,
 		"user_id":   session.UserID,
@@ -37,19 +45,20 @@ func HandleTyping(session *models.Session, msg map[string]interface{}) {
 }
 
 // HandleStopTyping broadcasts a group stop-typing signal to connected clients.
-func HandleStopTyping(session *models.Session, msg map[string]interface{}) {
-	groupIDRaw, ok := msg["group_id"].(float64)
-	if !ok {
+func HandleStopTyping(sConn *SafeConn, session *models.Session, msg map[string]interface{}) {
+	groupID, err := getPositiveIntField(msg, "group_id")
+	if err != nil {
+		sendWSError(sConn, "invalid_payload", "group_id is required and must be a positive integer")
 		return
 	}
-	groupID := int(groupIDRaw)
 
 	isMember, err := queries.IsUserGroupMember(groupID, session.UserID)
 	if err != nil || !isMember {
+		sendWSError(sConn, "forbidden", "You are not allowed to send typing events for this group")
 		return
 	}
 
-	BroadcastToAll(map[string]interface{}{
+	BroadcastRawToGroup(int64(groupID), map[string]interface{}{
 		"type":     "user_stop_typing",
 		"group_id": groupID,
 		"user_id":  session.UserID,

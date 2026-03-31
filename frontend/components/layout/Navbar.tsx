@@ -23,7 +23,7 @@ import {
 import { API_URL } from "@/lib/config";
 import * as ws from "@/lib/ws/ws";
 
-type NavItem = {
+type NavItem = { 
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;

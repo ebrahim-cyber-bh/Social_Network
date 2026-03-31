@@ -3,18 +3,44 @@ package queries
 import (
 	"backend/internal/models"
 	"database/sql"
+	"errors"
 	"time"
+
+	"github.com/mattn/go-sqlite3"
 )
 
 // CreateGroupChatMessage creates a new message in a group chat
 func CreateGroupChatMessage(groupID, userID int, content string) (int, error) {
 	query := `INSERT INTO group_chat_messages (group_id, user_id, content, created_at) VALUES (?, ?, ?, ?)`
-	result, err := DB.Exec(query, groupID, userID, content, time.Now())
-	if err != nil {
-		return 0, err
+
+	var (
+		result sql.Result
+		err    error
+	)
+
+	for attempt := 0; attempt < 4; attempt++ {
+		result, err = DB.Exec(query, groupID, userID, content, time.Now())
+		if err == nil {
+			break
+		}
+
+		if !isSQLiteBusy(err) || attempt == 3 {
+			return 0, err
+		}
+
+		time.Sleep(time.Duration(20*(1<<attempt)) * time.Millisecond)
 	}
+
 	id, err := result.LastInsertId()
 	return int(id), err
+}
+
+func isSQLiteBusy(err error) bool {
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code == sqlite3.ErrBusy || sqliteErr.Code == sqlite3.ErrLocked
+	}
+	return false
 }
 
 // GetGroupChatMessages retrieves messages for a group with pagination
