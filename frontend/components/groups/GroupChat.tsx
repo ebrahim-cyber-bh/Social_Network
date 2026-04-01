@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Send, Loader2, UserIcon } from "lucide-react";
 import { User } from "@/lib/interfaces";
 import { GroupChatMessage } from "@/lib/groups/interface";
-import { fetchGroupMessages } from "@/lib/groups/api";
+import { fetchGroupMessages, fetchGroupDetail } from "@/lib/groups/api";
 import { send, on, off } from "@/lib/ws/ws";
 import { API_URL } from "@/lib/config";
 import { extractImageUrls, renderMessageContent } from "@/lib/utils/message-utils";
@@ -10,9 +10,22 @@ import { extractImageUrls, renderMessageContent } from "@/lib/utils/message-util
 interface GroupChatProps {
   groupId: number;
   currentUser: User | null;
+  groupName?: string;
+  groupAvatar?: string;
+  chatType?: "group" | "private";
 }
 
-export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
+// Format timestamp to 12-hour format with AM/PM
+const formatTime = (isoDate: string): string => {
+  try {
+    const date = new Date(isoDate);
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+  } catch {
+    return "";
+  }
+};
+
+export default function GroupChat({ groupId, currentUser, groupName = "Group Chat", groupAvatar, chatType = "group" }: GroupChatProps) {
   const [messages, setMessages] = useState<GroupChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,6 +33,8 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const [typingUsers, setTypingUsers] = useState<Map<number, string>>(new Map());
+  const [groupInfo, setGroupInfo] = useState<any>(null);
+  const [groupInfoLoading, setGroupInfoLoading] = useState(false);
   const typingTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -36,8 +51,18 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
   const REMOTE_TYPING_EXPIRE_MS = 1800;
 
   useEffect(() => {
+    // Fetch group details if not provided
+    if (!groupName || !groupAvatar) {
+      setGroupInfoLoading(true);
+      fetchGroupDetail(groupId).then((detail) => {
+        if (detail?.success && detail?.group) {
+          setGroupInfo(detail.group);
+        }
+        setGroupInfoLoading(false);
+      });
+    }
     loadInitialMessages();
-  }, [groupId]);
+  }, [groupId, groupName, groupAvatar]);
 
   useEffect(() => {
     // Listen for new messages
@@ -281,17 +306,43 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
   };
 
   return (
-    <div className="flex-1 min-h-0 h-full flex flex-col bg-surface rounded-3xl border border-border overflow-hidden glass relative">
-      {/* Group Chat Header */}
-      <div className="p-6 border-b border-border flex items-center justify-between">
-        <h3 className="text-lg font-bold">Group Chat</h3>
-      </div>
+    <div className="flex-1 min-h-0 h-full flex flex-col bg-white dark:bg-surface overflow-hidden">
+      {/* Group Profile Header */}
+      <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-surface border-b border-border shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {groupAvatar || groupInfo?.cover_image_path ? (
+              <img
+                src={`${API_URL}${groupAvatar || groupInfo?.cover_image_path}`}
+                alt="Group avatar"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-sm font-bold text-primary">G</span>
+            )}
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-foreground leading-none mb-0.5">{groupName || groupInfo?.name || "Group Chat"}</h3>
+            {chatType === "private" && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                <p className="text-xs text-muted font-medium">Active</p>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <button className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors">View Profile</button>
+          <div className="h-6 w-[1px] bg-border"></div>
+          <button className="text-muted hover:text-primary transition-colors">📄</button>
+        </div>
+      </header>
 
       {/* Chat Messages */}
       <div
         ref={chatContainerRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-scroll overflow-x-hidden p-6 space-y-1"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-6 flex flex-col gap-1 bg-muted/2 dark:bg-background/50"
         style={{ scrollbarGutter: "stable" }}
       >
         {loadingMore && (
@@ -321,50 +372,42 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
             return (
               <div
                 key={msg.id || index}
-                className={`w-full flex ${isMe ? "justify-end" : "justify-start"} ${showDetails ? "mt-4" : "mt-1"}`}
+                className={`w-full flex ${isMe ? "justify-end" : "justify-start"} ${showDetails ? "mt-2" : "mt-0.5"}`}
               >
-                <div className={`flex min-w-0 max-w-[85%] gap-3 ${isMe ? "flex-row-reverse" : ""}`}>
-                  <div className={`shrink-0 ${!showDetails ? "w-10" : ""}`}>
+                <div className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""} max-w-[80%]`}>
+                  {/* Avatar - only for received messages */}
+                  {!isMe && (
+                    <div className="flex-shrink-0 w-8 h-8 mt-auto">
+                      {showDetails ? (
+                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+                          {avatar ? (
+                            <img src={`${API_URL}${avatar}`} alt="Avatar" className="w-full h-full object-cover" />
+                          ) : (
+                            <UserIcon className="h-4 w-4 text-primary" />
+                          )}
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8" />
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Content: Username/Time + Bubble */}
+                  <div className={`flex flex-col gap-1 ${isMe ? "items-end" : "items-start"}`}>
                     {showDetails && (
-                      <div className="w-10 h-10 rounded-xl bg-muted/20 border border-border flex items-center justify-center overflow-hidden">
-                        {avatar ? (
-                          <img src={`${API_URL}${avatar}`} alt="Avatar" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-muted-foreground font-bold text-xs uppercase">
-                          <UserIcon className="h-6 w-6 text-muted-foreground" />
-                          </span>
-                        )}
+                      <div className={`text-xs font-semibold text-muted-foreground mb-0.5 px-1 ${isMe ? "text-right" : "text-left"}`}>
+                        {!isMe && username}
                       </div>
                     )}
-                  </div>
-                  <div className={`flex flex-col min-w-0 max-w-full ${isMe ? "items-end" : "items-start"}`}>
-                    {showDetails && (
-                      <div className="flex items-baseline gap-2 mb-1 max-w-full">
-                        {isMe ? (
-                          <>
-                            <span className="text-[10px] text-muted-foreground font-medium">
-                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                            <span className="text-sm font-bold">You</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-sm font-bold shrink-0">{username}</span>
-                            <span className="text-[10px] text-muted-foreground font-medium shrink-0">
-                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    )}
+                    {/* Message Bubble */}
                     <div
-                      className={`w-fit min-w-0 max-w-full overflow-hidden ${hasImages ? 'p-2' : 'p-4'} text-sm leading-relaxed ${
+                      className={`p-3 rounded-xl shadow-sm max-w-[100%] ${
                         isMe
-                          ? `bg-primary text-black font-semibold shadow-lg shadow-primary/20 ${showDetails ? 'rounded-2xl rounded-tr-none' : 'rounded-2xl'}`
-                          : `bg-muted/10 text-foreground border border-border ${showDetails ? 'rounded-2xl rounded-tl-none' : 'rounded-2xl'}`
+                          ? `bg-primary text-white font-medium shadow-primary/20 ${showDetails ? 'rounded-br-none' : ''}`
+                          : `bg-muted/8 dark:bg-surface text-muted-foreground border border-border dark:border-border ${showDetails ? 'rounded-bl-none' : ''}`
                       }`}
                     >
-                      <div className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] ${hasImages ? 'px-2 pt-2' : ''}`}>
+                      <div className="text-sm leading-relaxed whitespace-normal break-words overflow-wrap-anywhere">
                         {renderMessageContent(msg.content, imageUrls)}
                       </div>
 
@@ -374,25 +417,27 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
                           {imageUrls
                             .filter(item => item.isImage)
                             .map((item, idx) => (
-                              <div
-                                key={idx}
-                                className={`rounded-xl overflow-hidden inline-block ${isMe ? 'bg-black/10' : 'bg-surface/50'}`}
-                              >
+                              <div key={idx} className="rounded-lg overflow-hidden inline-block">
                                 <img
                                   src={item.url}
                                   alt="Shared image"
-                                  className="max-w-[120px] max-h-[120px] object-cover rounded-xl"
+                                  className="max-w-[160px] max-h-[160px] object-cover rounded-lg"
                                   loading="lazy"
                                   onError={(e) => {
-                                    // Hide image if it fails to load
                                     e.currentTarget.style.display = 'none';
                                   }}
                                 />
                               </div>
-                            ))
-                          }
+                            ))}
                         </div>
                       )}
+
+                      {/* Timestamp */}
+                      <p className={`text-[11px] mt-1.5 opacity-70 ${
+                        isMe ? "text-white/80" : "text-muted-foreground"
+                      }`}>
+                        {formatTime(msg.created_at)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -403,7 +448,7 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
         
         {/* Typing Indicator */}
         {typingUsers.size > 0 && (
-          <div className="flex gap-2 items-center px-2 py-2 text-sm text-muted-foreground italic">
+          <div className="flex gap-2 items-center mt-2 text-sm text-muted-foreground italic font-normal">
             <div className="flex gap-1">
               <span className="inline-block w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
               <span className="inline-block w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -421,34 +466,38 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
       </div>
 
       {/* Chat Input */}
-      <div className="p-6 bg-transparent">
-        <form 
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendMessage();
-          }}
-          className="relative"
-        >
-          <input
-            type="text"
-            value={newMessage}
-            onChange={handleInputChange}
-            onBlur={emitStopTyping}
-            placeholder="Type a message..."
-            maxLength={MAX_MESSAGE_LENGTH}
-            className="w-full bg-muted/5 border border-border rounded-2xl py-4 pl-6 pr-16 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary placeholder-muted-foreground text-sm transition-all text-foreground"
-          />
-          <div className="absolute inset-y-0 right-3 flex items-center">
+      <footer className="px-6 py-4 bg-white dark:bg-surface border-t border-border shrink-0">
+        <div className="flex items-center gap-3 bg-muted/5 dark:bg-muted/10 rounded-xl p-3 border border-border">
+          <button className="text-muted hover:text-primary transition-colors flex-shrink-0">➕</button>
+          <button className="text-muted hover:text-primary transition-colors flex-shrink-0">🖼️</button>
+          <button className="text-muted hover:text-primary transition-colors flex-shrink-0">😊</button>
+          <div className="h-6 w-[1px] bg-border"></div>
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSendMessage();
+            }}
+            className="flex-1 flex items-center gap-2"
+          >
+            <input
+              type="text"
+              value={newMessage}
+              onChange={handleInputChange}
+              onBlur={emitStopTyping}
+              placeholder="Type a message..."
+              maxLength={MAX_MESSAGE_LENGTH}
+              className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-sm placeholder-muted-foreground text-foreground dark:text-white py-1"
+            />
             <button
               type="submit"
               disabled={!newMessage.trim()}
-              className="w-10 h-10 bg-primary text-black rounded-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 shadow-md shadow-primary/10"
+              className="w-9 h-9 bg-primary text-white rounded-lg flex items-center justify-center hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 shadow-md shadow-primary/20 flex-shrink-0"
             >
               <Send className="w-4 h-4" />
             </button>
-          </div>
-        </form>
-      </div>
+          </form>
+        </div>
+      </footer>
     </div>
   );
 }
