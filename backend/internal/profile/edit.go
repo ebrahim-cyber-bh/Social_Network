@@ -177,13 +177,6 @@ func EditProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If account switched from private → public, auto-accept all pending requests
-	if isPublic && !currentUser.IsPublic {
-		if err := queries.AcceptAllPendingFollowers(userID); err != nil {
-			println("AcceptAllPendingFollowers failed:", err.Error())
-		}
-	}
-
 	println("Profile updated successfully for user:", userID)
 
 	// Update password if provided

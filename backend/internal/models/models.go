@@ -16,6 +16,7 @@ type User struct {
 	Avatar      string    `json:"avatar"`
 	AboutMe     string    `json:"aboutMe"`
 	IsPublic    bool      `json:"isPublic"`
+	IsVerified  bool      `json:"isVerified"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
@@ -64,6 +65,7 @@ type UserPublic struct {
 	Avatar      string    `json:"avatar,omitempty"`
 	AboutMe     string    `json:"aboutMe,omitempty"`
 	IsPublic    bool      `json:"isPublic"`
+	IsVerified  bool      `json:"isVerified"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 

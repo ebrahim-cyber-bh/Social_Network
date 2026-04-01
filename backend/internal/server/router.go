@@ -4,6 +4,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/follow"
 	"backend/internal/groups"
+	"backend/internal/otp"
 	"backend/internal/posts"
 	"backend/internal/profile"
 	"backend/internal/users"
@@ -22,6 +23,7 @@ func SetupRoutes(mux *http.ServeMux) {
 	authHandle(mux, "POST /api/auth/logout", auth.LogoutHandler)
 
 	// ===== PROFILE =====
+	authHandle(mux, "PATCH /api/profile/privacy", profile.TogglePrivacyHandler)
 	authHandle(mux, "PUT /api/profile", profile.ProfileHandler)
 	authHandle(mux, "DELETE /api/profile", profile.ProfileHandler)
 
@@ -74,6 +76,10 @@ func SetupRoutes(mux *http.ServeMux) {
 	authHandle(mux, "POST /api/groups/events/respond", groups.RespondToEvent)
 	authHandle(mux, "GET /api/groups/events/responses", groups.GetEventResponsesHandler)
 	authHandle(mux, "DELETE /api/groups/events/{id}", groups.DeleteAnEvent)
+
+	// ===== OTP VERIFICATION =====
+	authHandle(mux, "POST /api/otp/send", otp.SendOTPHandler)
+	authHandle(mux, "POST /api/otp/verify", otp.VerifyOTPHandler)
 
 	// ===== POSTS =====
 	authHandle(mux, "GET /api/posts", posts.GetFeedPosts)

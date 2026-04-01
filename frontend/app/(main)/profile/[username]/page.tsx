@@ -5,10 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import {
   Settings, Mail, Cake, ShieldCheck, Users, Globe, Lock,
   Loader2, Search, UserIcon, ArrowLeft, Heart, MessageSquare,
-  Share2, Activity, FileText, Zap, Check, X, UserCheck,
+  Share2, Activity, FileText, Zap, Check, X, UserCheck, BadgeCheck, ShieldAlert,
 } from "lucide-react";
+import { sendOTP, verifyOTP } from "@/lib/auth/otp";
 import { getCurrentUser } from "@/lib/auth/auth";
-import { updateProfile } from "@/lib/auth/update";
 import { followUser, unfollowUser, getFollowers, getFollowing } from "@/lib/users/follow";
 import { fetchUserProfile } from "@/lib/users/profile";
 import type { PublicProfile } from "@/lib/users/profile";
@@ -168,132 +168,19 @@ function ProfilePostCard({ post, authorName, authorAvatarSrc }: {
 /* ── Info card (about section) ── */
 function InfoCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
-    <div className="bg-surface/50 border border-border p-4 rounded-xl flex items-center gap-4">
-      <div className="bg-foreground/5 p-2.5 rounded-lg shrink-0">
-        <Icon className="w-5 h-5 text-primary" />
+    <div className="bg-surface/50 border border-border p-3 rounded-lg flex items-center gap-3">
+      <div className="bg-foreground/5 p-2 rounded-md shrink-0">
+        <Icon className="w-4 h-4 text-primary" />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-muted uppercase font-bold tracking-tight">{label}</p>
-        <p className="text-sm text-foreground truncate">{value}</p>
+        <p className="text-[10px] text-muted uppercase font-bold tracking-tight">{label}</p>
+        <p className="text-xs text-foreground truncate">{value}</p>
       </div>
     </div>
   );
 }
 
 /* ── Follow requests panel ── */
-function FollowRequestsPanel({ onCountChange, onAccepted }: { onCountChange: (n: number) => void; onAccepted: () => void }) {
-  const [requests, setRequests] = useState<UserSearchResult[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    fetch(`${API_URL}/api/follow/requests`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((d) => { setRequests(d.requests ?? []); onCountChange((d.requests ?? []).length); })
-      .finally(() => setLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Real-time: new follow request arrives or requester cancels
-  useEffect(() => {
-    const handler = (data: any) => {
-      if (data.type !== "follow_update") return;
-      const d = data.data;
-      if (d.status === "pending") {
-        // New follow request — add to list if not already there
-        setRequests((prev) => {
-          if (prev.some((u) => u.userId === d.followerId)) return prev;
-          const newReq: UserSearchResult = {
-            userId: d.followerId,
-            username: d.followerUsername,
-            firstName: d.followerFirstName,
-            lastName: d.followerLastName,
-            avatar: d.followerAvatar || "",
-            nickname: "",
-            aboutMe: "",
-            isPublic: true,
-            followStatus: "none",
-            followsMe: false,
-          };
-          const next = [newReq, ...prev];
-          onCountChange(next.length);
-          return next;
-        });
-      } else if (d.status === "none") {
-        // Requester cancelled — remove from list
-        setRequests((prev) => {
-          const next = prev.filter((u) => u.userId !== d.followerId);
-          onCountChange(next.length);
-          return next;
-        });
-      }
-    };
-    ws.on("follow_update", handler);
-    return () => ws.off("follow_update", handler);
-  }, [onCountChange]);
-
-  const handle = async (username: string, action: "accept" | "decline") => {
-    setBusy((b) => ({ ...b, [username]: true }));
-    await fetch(`${API_URL}/api/follow/requests/handle`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, action }),
-    });
-    setRequests((prev) => {
-      const next = prev.filter((u) => u.username !== username);
-      onCountChange(next.length);
-      return next;
-    });
-    if (action === "accept") onAccepted();
-    setBusy((b) => ({ ...b, [username]: false }));
-  };
-
-  if (loading) return <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-primary" /></div>;
-  if (requests.length === 0) return (
-    <p className="text-xs text-muted/60 text-center py-3">No pending requests</p>
-  );
-
-  return (
-    <div className="flex flex-col gap-2">
-      {requests.map((u) => {
-        const avatarSrc = u.avatar ? `${API_URL}${u.avatar}` : null;
-        const name = `${u.firstName} ${u.lastName}`.trim() || u.username;
-        return (
-          <div key={u.userId} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-foreground/5 transition-colors">
-            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 bg-primary/10 flex items-center justify-center">
-              {avatarSrc
-                ? <img src={avatarSrc} alt={name} className="w-full h-full object-cover" />
-                : <UserIcon className="w-5 h-5 text-muted" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-foreground truncate">{name}</p>
-              <p className="text-[10px] text-muted truncate">@{u.username}</p>
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <button
-                onClick={() => handle(u.username, "accept")}
-                disabled={busy[u.username]}
-                className="w-7 h-7 rounded-full bg-primary/15 hover:bg-primary/30 flex items-center justify-center transition-colors"
-                title="Accept"
-              >
-                {busy[u.username] ? <Loader2 className="w-3 h-3 animate-spin text-primary" /> : <Check className="w-3.5 h-3.5 text-primary" />}
-              </button>
-              <button
-                onClick={() => handle(u.username, "decline")}
-                disabled={busy[u.username]}
-                className="w-7 h-7 rounded-full bg-foreground/8 hover:bg-destructive/20 flex items-center justify-center transition-colors"
-                title="Decline"
-              >
-                <X className="w-3.5 h-3.5 text-muted hover:text-destructive" />
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ── Person card (grid layout for followers/following) ── */
 function PersonCard({ person, currentUserId, onFollowChange }: {
   person: UserSearchResult;
@@ -360,6 +247,133 @@ function PersonCard({ person, currentUserId, onFollowChange }: {
 /* ─────────────────────────────────────────────────────────── */
 /*  Main profile page                                          */
 /* ─────────────────────────────────────────────────────────── */
+/* ── OTP Verification Modal ── */
+function OTPModal({ email, onSuccess, onClose }: {
+  email: string;
+  onSuccess: (user: any) => void;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<"idle" | "sending" | "sent" | "verifying" | "success">("idle");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [countdown, setCountdown] = useState(0);
+
+  // countdown timer
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  const handleSend = async () => {
+    setStep("sending"); setError("");
+    const res = await sendOTP();
+    if (res.success) { setStep("sent"); setCountdown(60); }
+    else { setError(res.message); setStep("idle"); }
+  };
+
+  const handleVerify = async () => {
+    if (code.length !== 6) { setError("Enter the 6-digit code."); return; }
+    setStep("verifying"); setError("");
+    const res = await verifyOTP(code);
+    if (res.success) { setStep("success"); setTimeout(() => { onSuccess(res.user); onClose(); }, 2000); }
+    else { setError(res.message); setStep("sent"); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}>
+      <div className="relative w-full max-w-sm bg-surface border border-border rounded-2xl overflow-hidden shadow-2xl">
+        {/* Top accent bar */}
+        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #00d1b2, #3b82f6, #00d1b2)", backgroundSize: "200%", animation: "shimmer 2s linear infinite" }} />
+
+        <div className="p-6">
+          {/* Close */}
+          <button onClick={onClose} className="absolute top-4 right-4 w-7 h-7 rounded-full bg-foreground/8 hover:bg-foreground/15 flex items-center justify-center transition-colors">
+            <X className="w-3.5 h-3.5 text-muted" />
+          </button>
+
+          {step === "success" ? (
+            /* ── Success state ── */
+            <div className="flex flex-col items-center gap-4 py-4 text-center">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "rgba(0,209,178,0.15)", animation: "popIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275)" }}>
+                <BadgeCheck className="w-8 h-8 text-primary" />
+              </div>
+              <div>
+                <p className="text-foreground font-bold text-lg">Account Verified!</p>
+                <p className="text-muted text-sm mt-1">Your account is now verified.</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <ShieldAlert className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-foreground font-bold text-base">Verify Your Account</h2>
+                  <p className="text-muted text-xs">We'll send a code to <span className="text-primary font-semibold">{email}</span></p>
+                </div>
+              </div>
+
+              {/* Code input */}
+              {(step === "sent" || step === "verifying") && (
+                <div className="mb-4">
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">Verification Code</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => { setCode(e.target.value.replace(/\D/g, "")); setError(""); }}
+                    placeholder="000000"
+                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-center text-2xl font-black text-foreground tracking-[0.5em] outline-none focus:border-primary/60 transition-colors placeholder:text-muted/30"
+                    autoFocus
+                  />
+                  <p className="text-xs text-muted mt-2 text-center">Code expires in 10 minutes</p>
+                </div>
+              )}
+
+              {/* Error */}
+              {error && <p className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2 mb-4">{error}</p>}
+
+              {/* Actions */}
+              <div className="flex flex-col gap-2">
+                {step === "idle" && (
+                  <button onClick={handleSend} className="w-full h-11 rounded-xl bg-primary text-black font-bold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+                    <Mail className="w-4 h-4" /> Send Verification Code
+                  </button>
+                )}
+                {step === "sending" && (
+                  <button disabled className="w-full h-11 rounded-xl bg-primary/50 text-black font-bold text-sm flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Sending...
+                  </button>
+                )}
+                {(step === "sent" || step === "verifying") && (
+                  <>
+                    <button onClick={handleVerify} disabled={step === "verifying" || code.length !== 6} className="w-full h-11 rounded-xl bg-primary text-black font-bold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                      {step === "verifying" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      {step === "verifying" ? "Verifying..." : "Verify"}
+                    </button>
+                    <button onClick={handleSend} disabled={countdown > 0 || step === "verifying"} className="w-full h-9 rounded-xl bg-foreground/5 text-muted text-xs font-semibold hover:bg-foreground/10 transition-colors disabled:opacity-40">
+                      {countdown > 0 ? `Resend in ${countdown}s` : "Resend Code"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <style>{`
+          @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+          @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        `}</style>
+      </div>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -376,6 +390,8 @@ export default function ProfilePage() {
 
   const [activeTab, setActiveTab] = useState<Tab>("posts");
   const [requestCount, setRequestCount] = useState(0);
+  const [showOTPModal, setShowOTPModal] = useState(false);
+  const [verifiedFlash, setVerifiedFlash] = useState(false);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [postsOffset, setPostsOffset] = useState(0);
@@ -403,7 +419,8 @@ export default function ProfilePage() {
       const me = await getCurrentUser();
       if (!me) { router.push("/login"); return; }
       setCurrentUser(me);
-      if (usernameParam === "me" || usernameParam === me.username) {
+      const isOwn = usernameParam === "me" || usernameParam === me.username;
+      if (isOwn) {
         setProfileUser(me); setLoading(false);
       } else {
         const data = await fetchUserProfile(usernameParam);
@@ -415,6 +432,13 @@ export default function ProfilePage() {
           setFollowingCount(data.followingCount);
         }
         setLoading(false);
+      }
+      // Fetch request count here — guaranteed to run after auth is confirmed
+      if (isOwn) {
+        fetch(`${API_URL}/api/follow/requests`, { credentials: "include" })
+          .then((r) => r.json())
+          .then((d) => setRequestCount((d.requests ?? []).length))
+          .catch(() => {});
       }
     }
     load();
@@ -452,15 +476,6 @@ export default function ProfilePage() {
     loadPosts();
   }, [profileUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Load follow request count ── */
-  useEffect(() => {
-    if (!isOwnProfile) return;
-    fetch(`${API_URL}/api/follow/requests`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((d) => setRequestCount((d.requests ?? []).length))
-      .catch(() => {});
-  }, [isOwnProfile]);
-
   useEffect(() => {
     if (!isOwnProfile) return;
     const handler = (data: any) => {
@@ -475,6 +490,20 @@ export default function ProfilePage() {
     ws.on("follow_update", handler);
     return () => ws.off("follow_update", handler);
   }, [isOwnProfile]);
+
+  /* ── Visitor: update follow button when own request is accepted/cancelled ── */
+  useEffect(() => {
+    if (isOwnProfile || !currentUser) return;
+    const handler = (data: any) => {
+      const d = data.data;
+      // Only care about events where WE are the follower
+      if (d.followerId !== currentUser.userId) return;
+      if (d.status === "accepted") setHeaderFollowStatus("accepted");
+      else if (d.status === "none") setHeaderFollowStatus("none");
+    };
+    ws.on("follow_update", handler);
+    return () => ws.off("follow_update", handler);
+  }, [isOwnProfile, currentUser]);
 
   /* ── Load more posts ── */
   const loadMorePosts = async () => {
@@ -528,24 +557,28 @@ export default function ProfilePage() {
   const handlePrivacyToggle = async () => {
     if (!currentUser || togglingPrivacy) return;
     const u = profileUser as User;
-    const currentIsPublic = u.isPublic === true;
-    const newIsPublic = !currentIsPublic;
+    const newIsPublic = !(u.isPublic === true);
     setTogglingPrivacy(true);
     setProfileUser((p) => p ? { ...p, isPublic: newIsPublic } : p);
-    const result = await updateProfile({
-      firstName: u.firstName, lastName: u.lastName, username: u.username,
-      nickname: u.nickname || "", email: u.email,
-      dateOfBirth: u.dateOfBirth ? u.dateOfBirth.split("T")[0] : "",
-      aboutMe: u.aboutMe || "", isPublic: newIsPublic,
-    });
-    if (result.success && result.user) {
-      const updated = { ...u, ...result.user, isPublic: newIsPublic };
-      setProfileUser(updated);
-      localStorage.setItem("currentUser", JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent("userUpdated", { detail: updated }));
-      // Switching to public auto-accepts all pending requests — clear the count
-      if (newIsPublic) setRequestCount(0);
-    } else {
+    try {
+      const res = await fetch(`${API_URL}/api/profile/privacy`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublic: newIsPublic }),
+      });
+      const result = await res.json();
+      if (result.success && result.user) {
+        const updated = { ...u, ...result.user };
+        setProfileUser(updated);
+        setCurrentUser(updated);
+        localStorage.setItem("currentUser", JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent("userUpdated", { detail: updated }));
+        if (newIsPublic) setRequestCount(0);
+      } else {
+        setProfileUser((p) => p ? { ...p, isPublic: !newIsPublic } : p);
+      }
+    } catch {
       setProfileUser((p) => p ? { ...p, isPublic: !newIsPublic } : p);
     }
     setTogglingPrivacy(false);
@@ -556,7 +589,8 @@ export default function ProfilePage() {
     if (headerFollowBusy || !profileUser) return;
     const target = (profileUser as PublicProfile).username;
     const prev = headerFollowStatus;
-    if (headerFollowStatus === "accepted" || headerFollowStatus === "pending") {
+    // Unfollow only if accepted, or if "pending" on a private account (cancel request)
+    if (headerFollowStatus === "accepted" || (headerFollowStatus === "pending" && !isPublic)) {
       setHeaderFollowStatus("none"); setHeaderFollowBusy(true);
       const res = await unfollowUser(target);
       if (res.success) {
@@ -682,7 +716,9 @@ export default function ProfilePage() {
     </div>
   );
 
-  const headerFollowLabel = headerFollowStatus === "accepted" ? "Unfollow" : headerFollowStatus === "pending" ? "Requested" : "Follow";
+  // On a public account, a stale "pending" state means the request was already accepted — treat as Follow
+  const pendingOnPublic = headerFollowStatus === "pending" && isPublic;
+  const headerFollowLabel = headerFollowStatus === "accepted" ? "Unfollow" : (headerFollowStatus === "pending" && !pendingOnPublic) ? "Requested" : "Follow";
 
   /* ════════════════════════════════════════════════════════════
      MAIN RENDER
@@ -691,15 +727,6 @@ export default function ProfilePage() {
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="w-full flex flex-col flex-1 overflow-hidden">
 
-        {/* ── Back button ── */}
-        {!isOwnProfile && (
-          <div className="px-6 pt-6">
-            <button onClick={() => router.back()} className="flex items-center gap-2 text-sm font-semibold text-muted hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" /> Back
-            </button>
-          </div>
-        )}
-
         {/* ══ COVER + HEADER ══════════════════════════════════════ */}
         <div className="relative">
           {/* Animated cover */}
@@ -707,6 +734,17 @@ export default function ProfilePage() {
             className="h-44 md:h-52 w-full overflow-hidden relative"
             style={{ background: "#020c0a" }}
           >
+            {/* Back button — overlaid on cover for visitor profiles */}
+            {!isOwnProfile && (
+              <div className="absolute top-4 left-4" style={{ zIndex: 10 }}>
+                <button
+                  onClick={() => router.back()}
+                  className="flex items-center gap-2 text-sm font-semibold text-white/70 hover:text-white transition-colors bg-black/30 hover:bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-lg"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Back
+                </button>
+              </div>
+            )}
             {/* z-0: base layers */}
             <div className="absolute inset-0" style={{ zIndex: 0,
               background: "linear-gradient(135deg, #000d0b 0%, #002e28 40%, #001830 75%, #000d0b 100%)"
@@ -786,50 +824,20 @@ export default function ProfilePage() {
                 50%     { transform: translate(-4px,-14px); opacity: 0.5; }
                 75%     { transform: translate(8px,-6px); opacity: 0.9; }
               }
+              @keyframes verifiedPulse {
+                0%   { box-shadow: 0 0 0 0 rgba(0,209,178,0.6); background: rgba(0,209,178,0.2); }
+                50%  { box-shadow: 0 0 24px 8px rgba(0,209,178,0.15); background: rgba(0,209,178,0.12); }
+                100% { box-shadow: 0 0 0 0 rgba(0,209,178,0); }
+              }
             `}</style>
 
           </div>
 
           {/* Profile info row */}
-          <div className="relative px-6 md:px-8 -mt-14 pb-6 flex flex-col md:flex-row md:items-end gap-4" style={{ zIndex: 10 }}>
-
-          {/* Action buttons — outside cover so overflow-hidden doesn't clip them */}
-          {isOwnProfile ? (
-            <div className="absolute top-4 right-6 md:right-8 flex items-center gap-3" style={{ zIndex: 20 }}>
-              <div className="bg-surface/80 backdrop-blur-sm border border-border p-3 rounded-xl flex items-center gap-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted leading-none">Privacy</p>
-                  <p className="text-sm text-foreground mt-0.5">{isPublic ? "Public" : "Private"}</p>
-                </div>
-                <button
-                  role="switch"
-                  aria-checked={isPublic}
-                  onClick={handlePrivacyToggle}
-                  disabled={togglingPrivacy}
-                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${isPublic ? "bg-primary" : "bg-foreground/20"}`}
-                >
-                  {togglingPrivacy
-                    ? <Loader2 className="w-3 h-3 animate-spin text-white absolute left-1/2 -translate-x-1/2" />
-                    : <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${isPublic ? "translate-x-5" : "translate-x-0.5"}`} />
-                  }
-                </button>
-              </div>
-              <button onClick={() => router.push("/settings")}
-                className="flex items-center gap-2 h-10 px-4 rounded-lg bg-surface border border-border text-foreground text-sm font-semibold hover:bg-background transition-colors">
-                <Settings className="w-4 h-4" /> Edit Profile
-              </button>
-            </div>
-          ) : (
-            <button onClick={handleHeaderFollow} disabled={headerFollowBusy}
-              style={{ zIndex: 20 }}
-              className={`absolute top-4 right-6 md:right-8 flex items-center justify-center gap-2 h-10 px-6 rounded-lg text-sm font-semibold transition-colors ${headerFollowStatus === "none" ? "bg-primary text-black hover:bg-primary/90" : "bg-surface border border-border text-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"}`}>
-              {headerFollowBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : headerFollowLabel}
-            </button>
-          )}
+          <div className="relative px-6 md:px-8 -mt-14 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4" style={{ zIndex: 10 }}>
 
             {/* Avatar + name */}
             <div className="flex flex-col md:flex-row md:items-end gap-4">
-              {/* Avatar */}
               <div className="h-28 w-28 rounded-full border-4 border-background overflow-hidden shrink-0 bg-surface shadow-xl">
                 {avatarSrc
                   ? <img src={avatarSrc} alt={displayName} className="h-full w-full object-cover" />
@@ -840,8 +848,6 @@ export default function ProfilePage() {
                     </div>
                 }
               </div>
-
-              {/* Name + meta */}
               <div className="mb-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">{displayName}</h1>
@@ -867,6 +873,39 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
+
+            {/* Action buttons */}
+            {isOwnProfile ? (
+              <div className="flex items-center gap-3 mb-2">
+                <div className="bg-surface/80 backdrop-blur-sm border border-border p-3 rounded-xl flex items-center gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted leading-none">Privacy</p>
+                    <p className="text-sm text-foreground mt-0.5">{isPublic ? "Public" : "Private"}</p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={isPublic}
+                    onClick={handlePrivacyToggle}
+                    disabled={togglingPrivacy}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${isPublic ? "bg-primary" : "bg-foreground/20"}`}
+                  >
+                    {togglingPrivacy
+                      ? <Loader2 className="w-3 h-3 animate-spin text-white absolute left-1/2 -translate-x-1/2" />
+                      : <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${isPublic ? "translate-x-5" : "translate-x-0.5"}`} />
+                    }
+                  </button>
+                </div>
+                <button onClick={() => router.push("/settings")}
+                  className="flex items-center gap-2 h-10 px-4 rounded-lg bg-surface border border-border text-foreground text-sm font-semibold hover:bg-background transition-colors">
+                  <Settings className="w-4 h-4" /> Edit Profile
+                </button>
+              </div>
+            ) : (
+              <button onClick={handleHeaderFollow} disabled={headerFollowBusy}
+                className={`flex items-center justify-center gap-2 h-10 px-6 rounded-lg text-sm font-semibold transition-colors mb-2 ${headerFollowStatus === "none" ? "bg-primary text-black hover:bg-primary/90" : "bg-surface border border-border text-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"}`}>
+                {headerFollowBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : headerFollowLabel}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1042,8 +1081,8 @@ export default function ProfilePage() {
           {/* ── Info sidebar (right) ── */}
           <div className="hidden lg:flex flex-col gap-3 w-80 shrink-0 overflow-y-auto">
 
-            {/* Follow Requests — only when own private profile */}
-            {isOwnProfile && !isPublic && (
+            {/* Follow Requests — always visible on own profile */}
+            {isOwnProfile && (
               <button
                 onClick={() => router.push("/notifications")}
                 className="w-full bg-surface border border-border rounded-xl px-4 py-3 flex items-center justify-between hover:border-primary/50 hover:bg-surface/80 transition-all group"
@@ -1069,15 +1108,7 @@ export default function ProfilePage() {
             )}
 
             {/* Privacy */}
-            <div className="bg-surface/50 border border-border p-4 rounded-xl flex items-center gap-4">
-              <div className="bg-foreground/5 p-2.5 rounded-lg shrink-0">
-                {isPublic ? <Globe className="w-5 h-5 text-primary" /> : <Lock className="w-5 h-5 text-primary" />}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted uppercase font-bold tracking-tight">Privacy</p>
-                <p className="text-sm text-foreground">{isPublic ? "Public" : "Private"}</p>
-              </div>
-            </div>
+            <InfoCard icon={isPublic ? Globe : Lock} label="Privacy" value={isPublic ? "Public" : "Private"} />
 
             {/* Email — own profile only */}
             {isOwnProfile && (profileUser as User)?.email && (
@@ -1089,15 +1120,67 @@ export default function ProfilePage() {
               <InfoCard icon={Cake} label="Birthday" value={formatDate((profileUser as User).dateOfBirth)} />
             )}
 
+
             {/* Member since */}
             {memberSince && (
               <InfoCard icon={ShieldCheck} label="Member Since" value={memberSince} />
             )}
+
+            {/* Verification badge */}
+            {isOwnProfile && (() => {
+              const isVerified = (profileUser as User)?.isVerified === true || verifiedFlash;
+              return (
+                <button
+                  onClick={() => !isVerified && setShowOTPModal(true)}
+                  disabled={isVerified}
+                  className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                    isVerified
+                      ? verifiedFlash
+                        ? "bg-primary/10 border-primary/60 shadow-[0_0_16px_rgba(0,209,178,0.25)]"
+                        : "bg-primary/5 border-primary/30 cursor-default"
+                      : "bg-red-500/5 border-red-500/30 hover:bg-red-500/10 hover:border-red-500/50 cursor-pointer"
+                  }`}
+                  style={verifiedFlash ? { animation: "verifiedPulse 1.5s ease-out" } : undefined}
+                >
+                  <div className={`p-2 rounded-md shrink-0 ${isVerified ? "bg-primary/10" : "bg-red-500/10"}`}>
+                    {isVerified
+                      ? <BadgeCheck className="w-4 h-4 text-primary" />
+                      : <ShieldAlert className="w-4 h-4 text-red-400" />}
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <p className={`text-[10px] uppercase font-bold tracking-tight ${isVerified ? "text-primary" : "text-red-400"}`}>
+                      {isVerified ? "Verified" : "Unverified"}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {isVerified ? "Account is verified" : "Click to verify account"}
+                    </p>
+                  </div>
+                </button>
+              );
+            })()}
           </div>
 
         </div>
 
       </div>
+
+      {/* OTP Modal */}
+      {showOTPModal && isOwnProfile && (
+        <OTPModal
+          email={(profileUser as User)?.email ?? ""}
+          onSuccess={(updatedUser) => {
+            if (updatedUser) {
+              setProfileUser((p) => p ? { ...p, isVerified: true } : p);
+              setCurrentUser((u) => u ? { ...u, isVerified: true } : u);
+              localStorage.setItem("currentUser", JSON.stringify({ ...currentUser, isVerified: true }));
+            }
+            setVerifiedFlash(true);
+            setTimeout(() => setVerifiedFlash(false), 3000);
+          }}
+          onClose={() => setShowOTPModal(false)}
+        />
+      )}
+
     </div>
   );
 }

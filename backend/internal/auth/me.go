@@ -71,6 +71,7 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 			Avatar:      user.Avatar,
 			AboutMe:     user.AboutMe,
 			IsPublic:    user.IsPublic,
+			IsVerified:  user.IsVerified,
 			CreatedAt:   user.CreatedAt,
 		},
 	})
