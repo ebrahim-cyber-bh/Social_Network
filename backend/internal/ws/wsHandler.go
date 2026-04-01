@@ -130,6 +130,9 @@ func WSHandler(w http.ResponseWriter, r *http.Request) {
 		case "group_message":
 			HandleGroupMessage(sConn, &session, msg)
 
+		case "private_message":
+			HandlePrivateMessage(sConn, &session, msg)
+
 		case "typing":
 			HandleTyping(sConn, &session, msg)
 

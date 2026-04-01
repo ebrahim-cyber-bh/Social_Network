@@ -2,26 +2,37 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CircleUserRound, Loader2, Users, Wifi, WifiOff } from "lucide-react";
+import { CircleUserRound, Loader2, Wifi, WifiOff } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/auth";
 import { ServerError } from "@/lib/errors";
 import { User, OnlineUser } from "@/lib/interfaces";
 import { Group } from "@/lib/groups/interface";
-import { fetchGroups, fetchGroupMembers } from "@/lib/groups/api";
-import { GroupMember } from "@/lib/groups/members";
+import { fetchGroups } from "@/lib/groups/api";
+import { fetchGroupMessages } from "@/lib/groups/chat";
+import { fetchPrivateConversations, fetchPrivateMessages } from "@/lib/chat";
 import GroupChat from "@/components/groups/GroupChat";
 import * as ws from "@/lib/ws/ws";
 import { API_URL } from "@/lib/config";
 
+interface Conversation {
+  id: number;
+  type: "group" | "private";
+  name: string;
+  avatar?: string;
+  lastMessage?: string;
+  lastMessageTime?: string;
+  groupId?: number;
+  otherUserId?: number;
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
+  const [selectedConversationType, setSelectedConversationType] = useState<"group" | "private" | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
-  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [membersLoading, setMembersLoading] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
 
   useEffect(() => {
@@ -34,11 +45,87 @@ export default function ChatPage() {
         }
         setCurrentUser(user);
 
+        // Fetch groups
         const groupsData = await fetchGroups();
         const userGroups = groupsData?.userGroups ?? [];
-        setGroups(userGroups);
-        if (userGroups.length > 0) {
-          setSelectedGroupId(userGroups[0].id);
+
+        // Fetch private conversations
+        const privateConvs = await fetchPrivateConversations();
+
+        // Build combined conversation list
+        const combinedConversations: Conversation[] = [];
+
+        // Add groups with actual last message
+        for (const group of userGroups) {
+          let lastMessage = "No messages yet";
+          try {
+            const groupMessages = await fetchGroupMessages(group.id, 1, 0);
+            if (groupMessages.success && groupMessages.messages.length > 0) {
+              const lastMsg = groupMessages.messages[0];
+              const senderName = lastMsg.user?.username || "User";
+              const msgPreview = lastMsg.content.substring(0, 30);
+              lastMessage = `${senderName}: ${msgPreview}${lastMsg.content.length > 30 ? "..." : ""}`;
+            }
+          } catch (error) {
+            console.error("Error fetching last message for group", group.id, error);
+          }
+
+          combinedConversations.push({
+            id: group.id,
+            type: "group",
+            name: group.name,
+            avatar: group.cover_image_path,
+            groupId: group.id,
+            lastMessage,
+          });
+        }
+
+        // Add private chats with last message
+        for (const conv of privateConvs) {
+          try {
+            const messages = await fetchPrivateMessages(conv.id, 1);
+            let lastMessage = "No messages yet";
+
+            if (messages.length > 0) {
+              const lastMsg = messages[0];
+              const senderName = lastMsg.user.username || "User";
+              const msgPreview = lastMsg.content.substring(0, 30);
+              lastMessage = `${senderName}: ${msgPreview}${lastMsg.content.length > 30 ? "..." : ""}`;
+            }
+
+            // Get name from other_user if available
+            const otherUserName = conv.other_user
+              ? `${conv.other_user.first_name} ${conv.other_user.last_name}`
+              : `Private Chat #${conv.id}`;
+
+            combinedConversations.push({
+              id: conv.id,
+              type: "private",
+              name: otherUserName,
+              avatar: conv.other_user?.avatar,
+              lastMessage,
+            });
+          } catch (error) {
+            console.error("Error processing private conversation", conv.id, error);
+            // Still add it even if message fetch fails
+            const otherUserName = conv.other_user
+              ? `${conv.other_user.first_name} ${conv.other_user.last_name}`
+              : `Private Chat #${conv.id}`;
+
+            combinedConversations.push({
+              id: conv.id,
+              type: "private",
+              name: otherUserName,
+              avatar: conv.other_user?.avatar,
+              lastMessage: "No messages yet",
+            });
+          }
+        }
+
+        setConversations(combinedConversations);
+        if (combinedConversations.length > 0) {
+          setSelectedConversationId(combinedConversations[0].id);
+          setSelectedConversationType(combinedConversations[0].type);
         }
 
         setLoading(false);
@@ -55,21 +142,44 @@ export default function ChatPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!selectedGroupId) return;
-
-    async function loadMembers() {
-      setMembersLoading(true);
-      const res = await fetchGroupMembers(selectedGroupId!);
-      setGroupMembers(res.members ?? []);
-      setMembersLoading(false);
-    }
-
-    loadMembers();
-  }, [selectedGroupId]);
-
-  useEffect(() => {
     const handleOnlineUsers = (data: { users: OnlineUser[] }) => {
       setOnlineUsers(data.users ?? []);
+    };
+
+    const handleNewGroupMessage = (data: any) => {
+      // Update last message for the group
+      setConversations((prev) => {
+        const updated = [...prev];
+        const groupIndex = updated.findIndex((c) => c.type === "group" && c.id === data.group_id);
+        if (groupIndex !== -1) {
+          const senderName = data.user?.username || "User";
+          const msgPreview = data.content?.substring(0, 30) || "";
+          const lastMessage = `${senderName}: ${msgPreview}${data.content?.length > 30 ? "..." : ""}`;
+          
+          // Move to top and update
+          const [conv] = updated.splice(groupIndex, 1);
+          updated.unshift({ ...conv, lastMessage });
+        }
+        return updated;
+      });
+    };
+
+    const handleNewPrivateMessage = (data: any) => {
+      // Update last message for the private chat
+      setConversations((prev) => {
+        const updated = [...prev];
+        const chatIndex = updated.findIndex((c) => c.type === "private" && c.id === data.conversation_id);
+        if (chatIndex !== -1) {
+          const senderName = data.user?.username || "User";
+          const msgPreview = data.content?.substring(0, 30) || "";
+          const lastMessage = `${senderName}: ${msgPreview}${data.content?.length > 30 ? "..." : ""}`;
+          
+          // Move to top and update
+          const [conv] = updated.splice(chatIndex, 1);
+          updated.unshift({ ...conv, lastMessage });
+        }
+        return updated;
+      });
     };
 
     const handleConnect = () => {
@@ -82,6 +192,8 @@ export default function ChatPage() {
     };
 
     ws.on("online_users", handleOnlineUsers);
+    ws.on("new_group_message", handleNewGroupMessage);
+    ws.on("new_private_message", handleNewPrivateMessage);
     ws.onConnect(handleConnect);
     ws.onDisconnect(handleDisconnect);
 
@@ -92,11 +204,12 @@ export default function ChatPage() {
 
     return () => {
       ws.off("online_users", handleOnlineUsers);
+      ws.off("new_group_message", handleNewGroupMessage);
+      ws.off("new_private_message", handleNewPrivateMessage);
     };
   }, []);
 
-  const selectedGroup = groups.find((group: Group) => group.id === selectedGroupId) || null;
-  const onlineMemberIds = new Set((onlineUsers ?? []).map((user: OnlineUser) => user.userId));
+  const selectedConversation = conversations.find((c) => c.id === selectedConversationId) || null;
 
   if (loading) {
     return (
@@ -106,12 +219,12 @@ export default function ChatPage() {
     );
   }
 
-  if (!groups.length) {
+  if (!conversations.length) {
     return (
       <div className="p-8">
         <div className="rounded-3xl border border-border bg-surface p-8 text-center">
-          <h2 className="text-2xl font-black tracking-tight">No Group Chats Yet</h2>
-          <p className="text-muted mt-2">Join a group to start chatting with members in real-time.</p>
+          <h2 className="text-2xl font-black tracking-tight">No Chats Yet</h2>
+          <p className="text-muted mt-2">Join a group or start a private chat to begin messaging.</p>
         </div>
       </div>
     );
@@ -122,110 +235,70 @@ export default function ChatPage() {
       <div className="grid grid-cols-12 gap-6 min-h-[calc(100vh-8rem)] lg:h-[calc(100vh-8rem)] items-stretch">
         <aside className="col-span-12 lg:col-span-3 lg:h-full min-h-0 rounded-3xl border border-border bg-surface p-4 overflow-y-auto">
           <div className="flex items-center justify-between mb-4 px-2">
-            <h2 className="text-sm font-black uppercase tracking-widest text-muted">Your Groups</h2>
+            <h2 className="text-sm font-black uppercase tracking-widest text-muted">Chats</h2>
             <div className="flex items-center gap-1 text-xs text-muted">
               {wsConnected ? <Wifi className="w-4 h-4 text-green-500" /> : <WifiOff className="w-4 h-4 text-red-500" />}
               {wsConnected ? "Live" : "Offline"}
             </div>
           </div>
           <div className="space-y-2">
-            {groups.map((group: Group) => {
-              const active = group.id === selectedGroupId;
+            {conversations.map((conversation) => {
+              const active = conversation.id === selectedConversationId;
               return (
                 <button
-                  key={group.id}
-                  onClick={() => setSelectedGroupId(group.id)}
-                  className={`w-full text-left p-3 rounded-2xl border transition-all ${
+                  key={`${conversation.type}-${conversation.id}`}
+                  onClick={() => {
+                    setSelectedConversationId(conversation.id);
+                    setSelectedConversationType(conversation.type);
+                  }}
+                  className={`w-full text-left p-3 rounded-2xl border transition-all flex items-center gap-3 ${
                     active
                       ? "border-primary bg-primary/10"
                       : "border-border hover:border-primary/30 hover:bg-foreground/5"
                   }`}
                 >
-                  <p className="font-bold text-sm truncate">{group.name}</p>
-                  <p className="text-xs text-muted truncate mt-1">{group.description}</p>
+                  {/* Avatar */}
+                  {conversation.avatar ? (
+                    <img
+                      src={`${API_URL}${conversation.avatar}`}
+                      alt={conversation.name}
+                      className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center flex-shrink-0">
+                      <CircleUserRound className="w-5 h-5 text-muted" />
+                    </div>
+                  )}
+
+                  {/* Text content */}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-sm truncate">{conversation.name}</p>
+                    {conversation.lastMessage && (
+                      <p className="text-xs text-muted truncate mt-0.5">{conversation.lastMessage}</p>
+                    )}
+                  </div>
                 </button>
               );
             })}
           </div>
         </aside>
 
-        <section className="col-span-12 lg:col-span-6 flex flex-col min-h-0 h-full overflow-hidden">
-          {selectedGroup ? (
-            <GroupChat groupId={selectedGroup.id} currentUser={currentUser} />
+        <section className="col-span-12 lg:col-span-9 flex flex-col min-h-0 h-full overflow-hidden">
+          {selectedConversation && selectedConversationType === "group" ? (
+            <GroupChat groupId={selectedConversation.id} currentUser={currentUser} />
+          ) : selectedConversation && selectedConversationType === "private" ? (
+            <div className="rounded-3xl border border-border bg-surface h-full flex items-center justify-center text-muted">
+              <div className="text-center">
+                <p className="text-lg font-semibold mb-2">Private Chat with {selectedConversation.name}</p>
+                <p className="text-sm">Chat component coming soon</p>
+              </div>
+            </div>
           ) : (
             <div className="rounded-3xl border border-border bg-surface h-full flex items-center justify-center text-muted">
-              Select a group to open chat
+              Select a conversation to open chat
             </div>
           )}
         </section>
-
-        <aside className="col-span-12 lg:col-span-3 lg:h-full min-h-0 rounded-3xl border border-border bg-surface p-4 overflow-y-auto">
-          <div className="flex items-center justify-between mb-4 px-2">
-            <h2 className="text-sm font-black uppercase tracking-widest text-muted">Members</h2>
-            <span className="text-xs font-bold bg-primary/15 text-primary px-2 py-1 rounded-lg">
-              {groupMembers.length}
-            </span>
-          </div>
-
-          {membersLoading ? (
-            <div className="py-8 flex justify-center">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {groupMembers.map((member: GroupMember) => {
-                const isOnline = onlineMemberIds.has(member.ID);
-                return (
-                  <div
-                    key={member.ID}
-                    className="flex items-center gap-3 p-2 rounded-xl border border-border bg-background/40"
-                  >
-                    <div className="relative">
-                      {member.Avatar ? (
-                        <img
-                          src={`${API_URL}${member.Avatar}`}
-                          alt={member.Username}
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-foreground/10 flex items-center justify-center">
-                          <CircleUserRound className="w-5 h-5 text-muted" />
-                        </div>
-                      )}
-                      <span
-                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${
-                          isOnline ? "bg-green-500" : "bg-muted"
-                        }`}
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold truncate">
-                        {member.FirstName} {member.LastName}
-                      </p>
-                      <p className="text-xs text-muted truncate">@{member.Username}</p>
-                    </div>
-                    {member.Role === "owner" && (
-                      <span className="text-[10px] font-black uppercase tracking-widest text-primary">Owner</span>
-                    )}
-                  </div>
-                );
-              })}
-
-              {!groupMembers.length && (
-                <div className="text-center text-sm text-muted py-8">
-                  No members found.
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="mt-4 p-3 rounded-xl border border-border bg-background/40">
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <Users className="w-4 h-4" />
-              <span>{onlineUsers.length} users online globally</span>
-            </div>
-          </div>
-        </aside>
       </div>
     </div>
   );

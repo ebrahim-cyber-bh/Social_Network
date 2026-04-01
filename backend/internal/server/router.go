@@ -2,6 +2,7 @@ package server
 
 import (
 	"backend/internal/auth"
+	"backend/internal/chat"
 	"backend/internal/groups"
 	"backend/internal/notifications"
 	"backend/internal/profile"
@@ -69,6 +70,11 @@ func SetupRoutes(mux *http.ServeMux) {
 	authHandle(mux, "GET /api/notifications", notifications.ListNotifications)
 	authHandle(mux, "POST /api/notifications/read", notifications.MarkNotificationRead)
 	authHandle(mux, "POST /api/notifications/read-all", notifications.MarkAllNotificationsRead)
+
+	// ===== PRIVATE CHAT =====
+	authHandle(mux, "GET /api/chats/private", chat.GetPrivateConversations)
+	authHandle(mux, "POST /api/chats/private/start/{userID}", chat.GetOrCreatePrivateChat)
+	authHandle(mux, "GET /api/chats/private/{conversationID}/messages", chat.GetPrivateChatMessages)
 
 	// ===== FILES =====
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))

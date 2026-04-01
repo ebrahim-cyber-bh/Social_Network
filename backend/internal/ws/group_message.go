@@ -63,20 +63,19 @@ func HandleGroupMessage(sConn *SafeConn, session *models.Session, msg map[string
 	}
 
 	response := map[string]interface{}{
-		"type": "new_group_message",
-		"data": map[string]interface{}{
-			"id":         msgID,
-			"group_id":   groupID,
-			"user_id":    session.UserID,
-			"content":    content,
-			"created_at": time.Now(),
-			"user": map[string]interface{}{
-				"ID":        user.ID,
-				"FirstName": user.FirstName,
-				"LastName":  user.LastName,
-				"Avatar":    user.Avatar,
-				"Nickname":  user.Nickname,
-			},
+		"type":       "new_group_message",
+		"id":         msgID,
+		"group_id":   groupID,
+		"user_id":    session.UserID,
+		"content":    content,
+		"created_at": time.Now(),
+		"user": map[string]interface{}{
+			"userId":    user.ID,
+			"username":  user.Username,
+			"firstName": user.FirstName,
+			"lastName":  user.LastName,
+			"avatar":    user.Avatar,
+			"nickname":  user.Nickname,
 		},
 	}
 

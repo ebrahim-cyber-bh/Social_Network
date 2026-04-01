@@ -44,23 +44,22 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
     const handleNewMessage = (data: any) => {
       if (
         data?.type === "new_group_message" &&
-        data.data &&
-        typeof data.data.group_id === "number" &&
-        typeof data.data.user_id === "number" &&
-        typeof data.data.content === "string" &&
-        data.data.group_id === groupId
+        typeof data.group_id === "number" &&
+        typeof data.user_id === "number" &&
+        typeof data.content === "string" &&
+        data.group_id === groupId
       ) {
-        setMessages((prev) => [...prev, data.data]);
+        setMessages((prev) => [...prev, data]);
         // Remove sender from typing indicators as soon as their message arrives
-        const existingTimeout = typingTimeoutsRef.current.get(data.data.user_id);
+        const existingTimeout = typingTimeoutsRef.current.get(data.user_id);
         if (existingTimeout) {
           clearTimeout(existingTimeout);
-          typingTimeoutsRef.current.delete(data.data.user_id);
+          typingTimeoutsRef.current.delete(data.user_id);
         }
         setTypingUsers((prev) => {
-          if (!prev.has(data.data.user_id)) return prev;
+          if (!prev.has(data.user_id)) return prev;
           const updated = new Map(prev);
-          updated.delete(data.data.user_id);
+          updated.delete(data.user_id);
           return updated;
         });
         scrollToBottom();
@@ -310,10 +309,10 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
             const isMe = currentUser?.userId === msg.user_id;
             const showDetails = index === 0 || messages[index - 1].user_id !== msg.user_id;
             
-            // Handle both capitalized and lowercase field names
-            const user = msg.user as any;
-            const avatar = user?.Avatar || user?.avatar;
-            const firstName = user?.FirstName || user?.firstName || 'User';
+            // Get user details from message
+            const user = msg.user;
+            const avatar = user?.avatar;
+            const username = user?.username || 'User';
             
             // Extract image URLs from message
             const imageUrls = extractImageUrls(msg.content);
@@ -350,7 +349,7 @@ export default function GroupChat({ groupId, currentUser }: GroupChatProps) {
                           </>
                         ) : (
                           <>
-                            <span className="text-sm font-bold shrink-0">{firstName}</span>
+                            <span className="text-sm font-bold shrink-0">{username}</span>
                             <span className="text-[10px] text-muted-foreground font-medium shrink-0">
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>

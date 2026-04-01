@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	groupMessageMinInterval = 800 * time.Millisecond
-	typingEventMinInterval  = 700 * time.Millisecond
+	groupMessageMinInterval   = 800 * time.Millisecond
+	privateMessageMinInterval = 800 * time.Millisecond
+	typingEventMinInterval    = 700 * time.Millisecond
 )
 
 var (

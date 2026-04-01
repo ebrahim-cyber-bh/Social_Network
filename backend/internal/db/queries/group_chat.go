@@ -47,7 +47,7 @@ func isSQLiteBusy(err error) bool {
 func GetGroupChatMessages(groupID, limit, offset int) ([]models.GroupChatMessage, error) {
 	query := `
 		SELECT m.id, m.group_id, m.user_id, m.content, m.created_at,
-		       u.id, u.first_name, u.last_name, u.avatar, u.nickname
+		       u.id, u.username, u.first_name, u.last_name, u.avatar, u.nickname
 		FROM group_chat_messages m
 		JOIN users u ON m.user_id = u.id
 		WHERE m.group_id = ?
@@ -70,7 +70,7 @@ func GetGroupChatMessages(groupID, limit, offset int) ([]models.GroupChatMessage
 
 		err := rows.Scan(
 			&msg.ID, &msg.GroupID, &msg.UserID, &msg.Content, &msg.CreatedAt,
-			&user.ID, &user.FirstName, &user.LastName, &avatar, &nickname,
+			&user.ID, &user.Username, &user.FirstName, &user.LastName, &avatar, &nickname,
 		)
 		if err != nil {
 			return nil, err
