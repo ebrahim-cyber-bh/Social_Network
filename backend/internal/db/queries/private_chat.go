@@ -8,43 +8,72 @@ import (
 	"time"
 )
 
-// CanMessage checks if two users can message each other
-// Returns true ONLY if they mutually follow each other with accepted status
+// CanMessage checks if two users can message each other.
+// Returns true if at least one user follows the other with accepted status,
+// OR if the recipient (user2) has a public profile.
 func CanMessage(user1ID, user2ID int) (bool, error) {
 	// Ensure no self-chat
 	if user1ID == user2ID {
 		return false, nil
 	}
 
-	// Check if user1 follows user2 (accepted)
-	var user1FollowsUser2 bool
+	var canMsg bool
 	err := DB.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM followers
-			WHERE follower_id = ? AND following_id = ? AND status = 'accepted'
+		SELECT (
+			EXISTS(
+				SELECT 1 FROM followers
+				WHERE (follower_id = ? AND following_id = ? AND status = 'accepted')
+				   OR (follower_id = ? AND following_id = ? AND status = 'accepted')
+			)
+			OR
+			EXISTS(
+				SELECT 1 FROM users WHERE id = ? AND is_public = 1
+			)
 		)
-	`, user1ID, user2ID).Scan(&user1FollowsUser2)
+	`, user1ID, user2ID, user2ID, user1ID, user2ID).Scan(&canMsg)
 	if err != nil {
 		return false, err
 	}
 
-	if !user1FollowsUser2 {
-		return false, nil
-	}
+	return canMsg, nil
+}
 
-	// Check if user2 follows user1 (accepted)
-	var user2FollowsUser1 bool
-	err = DB.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM followers
-			WHERE follower_id = ? AND following_id = ? AND status = 'accepted'
+// GetFollowContacts returns all users that the given user follows OR who follow them (accepted).
+// Used to populate the chat contacts list.
+func GetFollowContacts(userID int) ([]models.UserSearchResult, error) {
+	query := `
+		SELECT DISTINCT u.id, u.username, u.first_name, u.last_name,
+		       COALESCE(u.nickname, '') as nickname,
+		       COALESCE(u.avatar, '') as avatar,
+		       COALESCE(u.about_me, '') as about_me,
+		       u.is_public
+		FROM users u
+		WHERE u.id != ? AND u.id IN (
+			SELECT following_id FROM followers WHERE follower_id = ? AND status = 'accepted'
+			UNION
+			SELECT follower_id FROM followers WHERE following_id = ? AND status = 'accepted'
 		)
-	`, user2ID, user1ID).Scan(&user2FollowsUser1)
+		ORDER BY u.first_name, u.last_name
+	`
+	rows, err := DB.Query(query, userID, userID, userID)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+	defer rows.Close()
 
-	return user2FollowsUser1, nil
+	var contacts []models.UserSearchResult
+	for rows.Next() {
+		var c models.UserSearchResult
+		err := rows.Scan(
+			&c.UserID, &c.Username, &c.FirstName, &c.LastName,
+			&c.Nickname, &c.Avatar, &c.AboutMe, &c.IsPublic,
+		)
+		if err != nil {
+			return nil, err
+		}
+		contacts = append(contacts, c)
+	}
+	return contacts, rows.Err()
 }
 
 // GetOrCreatePrivateChat gets or creates a private conversation between two users

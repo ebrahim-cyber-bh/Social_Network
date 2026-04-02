@@ -27,6 +27,7 @@ func SetupRoutes(mux *http.ServeMux) {
 
 	// ===== USERS =====
 	authHandle(mux, "GET /api/users/search", users.SearchUsersHandler)
+	authHandle(mux, "GET /api/users/contacts", users.GetContactsHandler)
 
 	// ===== GROUPS =====
 	// List & Create
