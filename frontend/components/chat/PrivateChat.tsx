@@ -15,6 +15,7 @@ interface PrivateChatProps {
   otherUserName: string;
   otherUserId?: number;
   otherUserAvatar?: string;
+  isOnline?: boolean;
 }
 
 // Emoji categories
@@ -49,6 +50,7 @@ export default function PrivateChat({
   otherUserName,
   otherUserId,
   otherUserAvatar,
+  isOnline,
 }: PrivateChatProps) {
   const [messages, setMessages] = useState<PrivateChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -287,12 +289,12 @@ export default function PrivateChat({
             <h3 className="text-base font-bold text-foreground leading-none mb-0.5">{otherUserName}</h3>
             {isOtherTyping ? (
               <p className="text-xs text-primary font-medium">typing...</p>
-            ) : (
+            ) : isOnline ? (
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-green-500" />
-                <p className="text-xs text-muted-foreground font-medium">Active</p>
+                <p className="text-xs text-muted-foreground font-medium">online</p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </header>
@@ -324,7 +326,7 @@ export default function PrivateChat({
               )}
             </div>
             <p className="text-base font-bold text-foreground">{otherUserName}</p>
-            <p className="text-sm text-muted-foreground">Send a message to start the conversation 👋</p>
+            <p className="text-sm text-muted-foreground">Send a message to start the conversation</p>
           </div>
         ) : (
           messages.map((msg, index) => {
