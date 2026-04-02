@@ -344,72 +344,68 @@ export default function PrivateChat({
         ) : (
           messages.map((msg, index) => {
             const isMe = currentUser?.userId === msg.user_id;
-            const showDetails =
-              index === 0 || messages[index - 1].user_id !== msg.user_id;
+            const showDetails = index === 0 || messages[index - 1].user_id !== msg.user_id;
 
             const avatar = msg.user?.avatar;
             const imageUrls = extractImageUrls(msg.content);
             const hasImages = imageUrls.some((item) => item.isImage);
 
             return (
-              <div
-                key={msg.id || index}
-                className={`w-full flex ${isMe ? "justify-end" : "justify-start"} ${showDetails ? "mt-2" : "mt-0.5"}`}
-              >
-                <div className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""} max-w-[80%]`}>
-                  {/* Avatar for received */}
-                  {!isMe && (
-                    <div className="flex-shrink-0 w-8 h-8 mt-auto">
-                      {showDetails ? (
-                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
-                          {avatar ? (
-                            <img src={`${API_URL}${avatar}`} alt="Avatar" className="w-full h-full object-cover" />
-                          ) : (
-                            <UserIcon className="h-4 w-4 text-primary" />
-                          )}
-                        </div>
-                      ) : (
-                        <div className="w-8 h-8" />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Bubble */}
-                  <div className={`flex flex-col gap-1 ${isMe ? "items-end" : "items-start"}`}>
-                    <div
-                      className={`p-3 rounded-xl shadow-sm max-w-full ${
-                        isMe
-                          ? `bg-primary text-white font-medium shadow-primary/20 ${showDetails ? "rounded-br-none" : ""}`
-                          : `bg-muted/8 dark:bg-surface text-muted-foreground border border-border ${showDetails ? "rounded-bl-none" : ""}`
-                      }`}
-                    >
-                      <div className="text-sm leading-relaxed whitespace-normal break-words overflow-wrap-anywhere">
-                        {renderMessageContent(msg.content, imageUrls)}
+              <div key={msg.id || index} className={`flex flex-col ${isMe ? "items-end" : "items-start"} ${showDetails ? "mt-4" : "mt-1"}`}>
+                {/* Show user info above message when showDetails */}
+                {showDetails && (
+                  <div className={`flex items-center gap-2 mb-2 ${isMe ? "flex-row-reverse" : ""}`}>
+                    {!isMe && (
+                      <div className="w-8 h-8 rounded-xl bg-muted/20 border border-border flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {avatar ? (
+                          <img src={`${API_URL}${avatar}`} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          <UserIcon className="h-5 w-5 text-muted-foreground" />
+                        )}
                       </div>
-
-                      {hasImages && (
-                        <div className="mt-2 space-y-2">
-                          {imageUrls
-                            .filter((item) => item.isImage)
-                            .map((item, idx) => (
-                              <div key={idx} className="rounded-lg overflow-hidden inline-block">
-                                <img
-                                  src={item.url}
-                                  alt="Shared image"
-                                  className="max-w-[160px] max-h-[160px] object-cover rounded-lg"
-                                  loading="lazy"
-                                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                                />
-                              </div>
-                            ))}
-                        </div>
-                      )}
-
-                      <p className={`text-[11px] mt-1.5 opacity-70 ${isMe ? "text-white/80" : "text-muted-foreground"}`}>
-                        {formatTime(msg.created_at)}
-                      </p>
+                    )}
+                    <div className={`flex items-baseline gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
+                      <span className="text-sm font-bold">{isMe ? "You" : otherUserName}</span>
+                      <span className="text-[10px] text-muted-foreground font-medium">
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </div>
                   </div>
+                )}
+
+                {/* Message bubble */}
+                <div
+                  className={`${hasImages ? "p-2" : "p-4"} text-sm leading-relaxed max-w-[85%] ${
+                    isMe
+                      ? `bg-primary text-black font-semibold shadow-lg shadow-primary/20 rounded-2xl rounded-tr-none`
+                      : `bg-muted/10 text-foreground border border-border rounded-2xl rounded-tl-none`
+                  }`}
+                >
+                  <div className={`break-words ${hasImages ? "px-2 pt-2" : ""}`}>{renderMessageContent(msg.content, imageUrls)}</div>
+
+                  {/* Render images inline */}
+                  {hasImages && (
+                    <div className="mt-2 space-y-2">
+                      {imageUrls
+                        .filter((item) => item.isImage)
+                        .map((item, idx) => (
+                          <div
+                            key={idx}
+                            className={`rounded-xl overflow-hidden inline-block ${isMe ? "bg-black/10" : "bg-surface/50"}`}
+                          >
+                            <img
+                              src={item.url}
+                              alt="Shared image"
+                              className="max-w-[120px] max-h-[120px] object-cover rounded-xl"
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -432,17 +428,55 @@ export default function PrivateChat({
       </div>
 
       {/* Input footer */}
-      <footer className="px-6 py-4 bg-surface border-t border-border shrink-0">
-        <div className="relative flex items-center gap-3 bg-muted/10 dark:bg-foreground/10 rounded-xl p-3 border border-border">
+      <footer className="p-6 bg-transparent shrink-0">
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendMessage();
+          }}
+          className="relative"
+        >
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker((v) => !v)}
+              className={`absolute inset-y-0 left-4 flex items-center text-muted-foreground hover:text-primary transition-colors ${showEmojiPicker ? "text-primary" : ""}`}
+              title="Add emoji"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+            
+            <input
+              ref={inputRef}
+              type="text"
+              value={newMessage}
+              onChange={handleInputChange}
+              onBlur={emitStopTyping}
+              placeholder={`Message ${otherUserName}...`}
+              maxLength={MAX_MESSAGE_LENGTH}
+              className="w-full bg-muted/5 border border-border rounded-2xl py-4 pl-14 pr-16 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary placeholder-muted-foreground text-sm transition-all text-foreground"
+            />
+            <div className="absolute inset-y-0 right-3 flex items-center">
+              <button
+                type="submit"
+                disabled={!newMessage.trim()}
+                className="w-10 h-10 bg-primary text-black rounded-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 shadow-md shadow-primary/10"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
           {/* Emoji picker */}
           {showEmojiPicker && (
             <div
               ref={emojiPickerRef}
-              className="absolute bottom-full left-0 mb-2 w-72 bg-surface border border-border rounded-xl shadow-xl p-3 z-50"
+              className="absolute bottom-full left-0 mb-3 w-72 bg-surface border border-border rounded-xl shadow-xl p-3 z-50"
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-muted-foreground">Emojis</span>
                 <button
+                  type="button"
                   onClick={() => setShowEmojiPicker(false)}
                   className="text-muted-foreground hover:text-foreground transition-colors"
                 >
@@ -453,6 +487,7 @@ export default function PrivateChat({
                 {EMOJI_LIST.map((emoji, i) => (
                   <button
                     key={i}
+                    type="button"
                     onClick={() => handleEmojiClick(emoji)}
                     className="text-xl w-7 h-7 flex items-center justify-center rounded hover:bg-muted/30 transition-colors"
                     title={emoji}
@@ -463,43 +498,7 @@ export default function PrivateChat({
               </div>
             </div>
           )}
-
-          {/* Emoji button */}
-          <button
-            type="button"
-            onClick={() => setShowEmojiPicker((v) => !v)}
-            className={`text-muted-foreground hover:text-primary transition-colors flex-shrink-0 ${showEmojiPicker ? "text-primary" : ""}`}
-            title="Add emoji"
-          >
-            <Smile className="w-5 h-5" />
-          </button>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage();
-            }}
-            className="flex-1 flex items-center gap-2"
-          >
-            <input
-              ref={inputRef}
-              type="text"
-              value={newMessage}
-              onChange={handleInputChange}
-              onBlur={emitStopTyping}
-              placeholder={`Message ${otherUserName}...`}
-              maxLength={MAX_MESSAGE_LENGTH}
-              className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-sm placeholder-muted-foreground dark:placeholder-muted text-foreground dark:text-white py-1"
-            />
-            <button
-              type="submit"
-              disabled={!newMessage.trim()}
-              className="w-9 h-9 bg-primary text-white rounded-lg flex items-center justify-center hover:bg-primary/80 active:scale-95 transition-all disabled:opacity-50 shadow-md shadow-primary/20 flex-shrink-0"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
-        </div>
+        </form>
       </footer>
     </div>
   );
