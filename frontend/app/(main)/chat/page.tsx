@@ -259,7 +259,7 @@ export default function ChatPage() {
   return (
     <div className="flex-1 min-h-0 bg-background">
       <div className="grid grid-cols-12 gap-3 h-full items-stretch px-3 py-3 lg:px-4 lg:py-4">
-        <aside className="col-span-12 lg:col-span-3 lg:h-full min-h-0 rounded-2xl border border-border bg-white dark:bg-surface p-4 overflow-y-auto flex flex-col shadow-sm">
+        <aside className="col-span-12 lg:col-span-3 lg:h-full min-h-0 rounded-2xl border border-border bg-surface p-4 overflow-y-auto flex flex-col shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-foreground">Messages</h2>
             <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
@@ -326,7 +326,7 @@ export default function ChatPage() {
           </div>
         </aside>
 
-        <section className="col-span-12 lg:col-span-9 flex flex-col min-h-0 overflow-hidden rounded-2xl border border-border bg-white dark:bg-surface shadow-sm">
+        <section className="col-span-12 lg:col-span-9 flex flex-col min-h-0 overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
           {selectedConversation && selectedConversationType === "group" ? (
             <GroupChat
               groupId={selectedConversation.id}

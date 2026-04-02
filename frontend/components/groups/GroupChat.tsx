@@ -308,7 +308,7 @@ export default function GroupChat({ groupId, currentUser, groupName = "Group Cha
   return (
     <div className="flex-1 min-h-0 h-full flex flex-col bg-white dark:bg-surface overflow-hidden">
       {/* Group Profile Header */}
-      <header className="h-16 flex items-center justify-between px-6 bg-white dark:bg-surface border-b border-border shrink-0">
+      <header className="h-16 flex items-center justify-between px-6 bg-surface border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
             {groupAvatar || groupInfo?.cover_image_path ? (
@@ -342,7 +342,7 @@ export default function GroupChat({ groupId, currentUser, groupName = "Group Cha
       <div
         ref={chatContainerRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-6 flex flex-col gap-1 bg-muted/2 dark:bg-background/50"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-6 flex flex-col gap-1 bg-background"
         style={{ scrollbarGutter: "stable" }}
       >
         {loadingMore && (
@@ -466,12 +466,8 @@ export default function GroupChat({ groupId, currentUser, groupName = "Group Cha
       </div>
 
       {/* Chat Input */}
-      <footer className="px-6 py-4 bg-white dark:bg-surface border-t border-border shrink-0">
-        <div className="flex items-center gap-3 bg-muted/5 dark:bg-muted/10 rounded-xl p-3 border border-border">
-          <button className="text-muted hover:text-primary transition-colors flex-shrink-0">➕</button>
-          <button className="text-muted hover:text-primary transition-colors flex-shrink-0">🖼️</button>
-          <button className="text-muted hover:text-primary transition-colors flex-shrink-0">😊</button>
-          <div className="h-6 w-[1px] bg-border"></div>
+      <footer className="px-6 py-4 bg-surface border-t border-border shrink-0">
+        <div className="flex items-center gap-3 bg-muted/10 dark:bg-foreground/10 rounded-xl p-3 border border-border">
           <form 
             onSubmit={(e) => {
               e.preventDefault();
@@ -486,7 +482,7 @@ export default function GroupChat({ groupId, currentUser, groupName = "Group Cha
               onBlur={emitStopTyping}
               placeholder="Type a message..."
               maxLength={MAX_MESSAGE_LENGTH}
-              className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-sm placeholder-muted-foreground text-foreground dark:text-white py-1"
+              className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-sm placeholder-muted-foreground dark:placeholder-muted text-foreground dark:text-white py-1"
             />
             <button
               type="submit"
