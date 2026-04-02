@@ -22,12 +22,26 @@ func SetupRoutes(mux *http.ServeMux) {
 	authHandle(mux, "POST /api/auth/logout", auth.LogoutHandler)
 
 	// ===== PROFILE =====
+	authHandle(mux, "PATCH /api/profile/privacy", profile.TogglePrivacyHandler)
 	authHandle(mux, "PUT /api/profile", profile.ProfileHandler)
 	authHandle(mux, "DELETE /api/profile", profile.ProfileHandler)
 
 	// ===== USERS =====
+	// Exact routes must come before the wildcard {username} route
 	authHandle(mux, "GET /api/users/search", users.SearchUsersHandler)
 	authHandle(mux, "GET /api/users/contacts", users.GetContactsHandler)
+	authHandle(mux, "GET /api/users/following", users.GetFollowingHandler)
+	authHandle(mux, "GET /api/users/{username}", users.GetPublicProfileHandler)
+	authHandle(mux, "GET /api/users/{username}/followers", follow.GetFollowersHandler)
+	authHandle(mux, "GET /api/users/{username}/following", follow.GetFollowingListHandler)
+	authHandle(mux, "GET /api/users/{username}/posts", posts.GetUserPostsHandler)
+	authHandle(mux, "GET /api/users/{username}/stats", users.GetUserStatsHandler)
+
+	// ===== FOLLOW =====
+	authHandle(mux, "POST /api/follow/{username}", follow.FollowHandler)
+	authHandle(mux, "DELETE /api/follow/{username}", follow.UnfollowHandler)
+	authHandle(mux, "GET /api/follow/requests", follow.GetFollowRequestsHandler)
+	authHandle(mux, "POST /api/follow/requests/handle", follow.HandleFollowRequestHandler)
 
 	// ===== GROUPS =====
 	// List & Create
@@ -63,7 +77,21 @@ func SetupRoutes(mux *http.ServeMux) {
 	authHandle(mux, "GET /api/groups/events/responses", groups.GetEventResponsesHandler)
 	authHandle(mux, "DELETE /api/groups/events/{id}", groups.DeleteAnEvent)
 
+	// ===== OTP VERIFICATION =====
+	authHandle(mux, "POST /api/otp/send", otp.SendOTPHandler)
+	authHandle(mux, "POST /api/otp/verify", otp.VerifyOTPHandler)
+
 	// ===== POSTS =====
+	authHandle(mux, "GET /api/posts", posts.GetFeedPosts)
+	authHandle(mux, "POST /api/posts", posts.CreatePost)
+	authHandle(mux, "GET /api/posts/{id}", posts.GetPost)
+	authHandle(mux, "PUT /api/posts/{id}", posts.UpdatePost)
+	authHandle(mux, "GET /api/posts/{id}/comments", posts.GetComments)
+	authHandle(mux, "POST /api/posts/{id}/comments", posts.AddComment)
+	authHandle(mux, "DELETE /api/posts/{id}/comments/{commentId}", posts.DeleteComment)
+	authHandle(mux, "PUT /api/posts/{id}/comments/{commentId}", posts.UpdateComment)
+	authHandle(mux, "GET /api/posts/{id}/comments/{commentId}/replies", posts.GetReplies)
+	authHandle(mux, "POST /api/posts/{id}/comments/{commentId}/replies", posts.AddReply)
 	authHandle(mux, "POST /posts/{id}/like", groups.PostLike)
 	authHandle(mux, "DELETE /posts/{id}", groups.DeletePost)
 

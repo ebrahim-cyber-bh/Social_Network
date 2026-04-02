@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -88,15 +89,33 @@ func SaveUploadedFile(file multipart.File, header *multipart.FileHeader, directo
 	// Validate file type
 	contentType := header.Header.Get("Content-Type")
 	allowedTypes := map[string]bool{
-		"image/jpeg": true,
-		"image/jpg":  true,
-		"image/png":  true,
-		"image/webp": true,
-		"image/gif":  true,
+		"image/jpeg":      true,
+		"image/jpg":       true,
+		"image/png":       true,
+		"image/webp":      true,
+		"image/gif":       true,
+		"video/mp4":       true,
+		"video/webm":      true,
+		"video/quicktime": true,
 	}
 
 	if !allowedTypes[contentType] {
-		return "", errors.New("file must be JPEG, PNG, WebP, or GIF")
+		return "", errors.New("file must be JPEG, PNG, WebP, GIF, MP4, WebM, or MOV")
+	}
+
+	// Enforce size limits: 10 MB for images/GIFs, 25 MB for videos
+	isVideo := strings.HasPrefix(contentType, "video/")
+	var maxSize int64
+	if isVideo {
+		maxSize = 25 << 20 // 25 MB
+	} else {
+		maxSize = 10 << 20 // 10 MB
+	}
+	if header.Size > maxSize {
+		if isVideo {
+			return "", errors.New("video must be at most 25 MB")
+		}
+		return "", errors.New("image/GIF must be at most 10 MB")
 	}
 
 	// Generate unique filename

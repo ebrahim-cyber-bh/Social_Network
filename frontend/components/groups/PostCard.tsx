@@ -8,10 +8,12 @@ import {
 } from "lucide-react";
 import { GroupPost } from "@/lib/groups/interface";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { togglePostLike, deletePost } from "@/lib/groups/posts";
 import ConfirmModal from "@/components/ui/confirm";
 import { API_URL } from "@/lib/config";
 import { formatTimeAgo } from "@/lib/utils/format";
+import GroupCommentsSection from "@/components/groups/GroupCommentsSection";
 
 interface PostCardProps {
   post: GroupPost;
@@ -32,6 +34,7 @@ export default function PostCard({
   currentUserId,
   groupOwnerId,
 }: PostCardProps) {
+  const router = useRouter();
   const [imageError, setImageError] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -41,6 +44,8 @@ export default function PostCard({
   const [showMenu, setShowMenu] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsCount, setCommentsCount] = useState(post.comments ?? 0);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close menu on click outside or ESC key
@@ -232,7 +237,10 @@ export default function PostCard({
     <article className="bg-surface border border-border rounded-xl overflow-hidden hover:border-border/80 transition-colors">
       {/* Post Header */}
       <header className="p-4 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-linear-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 overflow-hidden">
+        <button
+          onClick={() => router.push(`/profile/${getAuthorUsername()}`)}
+          className="w-10 h-10 rounded-full bg-linear-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 overflow-hidden hover:opacity-80 transition-opacity focus:outline-none"
+        >
           {getAuthorAvatar() && !avatarError ? (
             <img
               src={`${API_URL}${getAuthorAvatar()}`}
@@ -243,10 +251,13 @@ export default function PostCard({
           ) : (
             <UserIcon className="h-6 w-6 text-muted-foreground" />
           )}
-        </div>
+        </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">
-            <h3 className="text-sm font-bold text-foreground shrink-0">
+            <h3
+              className="text-sm font-bold text-foreground shrink-0 hover:text-primary cursor-pointer transition-colors"
+              onClick={() => router.push(`/profile/${getAuthorUsername()}`)}
+            >
               {getAuthorFullName()}
             </h3>
             <span className="text-[11px] text-muted shrink-0 italic">
@@ -330,14 +341,12 @@ export default function PostCard({
           </span>
         </button>
         <button
-          onClick={() => onComment?.(post.id)}
-          aria-label={`View ${post.comments ?? 0} comments`}
-          className="flex items-center gap-2 text-muted hover:text-primary transition-colors group"
+          onClick={() => setCommentsOpen(o => !o)}
+          aria-label={`${commentsCount} comments`}
+          className={`flex items-center gap-2 transition-colors group ${commentsOpen ? "text-primary" : "text-muted hover:text-primary"}`}
         >
           <MessageSquare className="w-5 h-5 group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold">
-            {(post.comments ?? 0) > 0 ? `${post.comments ?? 0}` : "0"}
-          </span>
+          <span className="text-xs font-bold">{commentsCount > 0 ? commentsCount : "0"}</span>
         </button>
         <button
           onClick={handleShare}
@@ -360,6 +369,16 @@ export default function PostCard({
         confirmVariant="danger"
         isLoading={isDeleting}
       />
+
+      {/* Inline comments section */}
+      {commentsOpen && currentUserId && (
+        <GroupCommentsSection
+          postId={post.id}
+          currentUserId={currentUserId}
+          onInitialLoad={(total) => setCommentsCount(total)}
+          onCountChange={(delta) => setCommentsCount(prev => Math.max(0, prev + delta))}
+        />
+      )}
     </article>
   );
 }
