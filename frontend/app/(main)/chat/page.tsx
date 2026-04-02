@@ -329,6 +329,7 @@ export default function ChatPage() {
             otherUserName={`${selectedContact.firstName} ${selectedContact.lastName}`.trim()}
             otherUserId={selectedContact.userId}
             otherUserAvatar={selectedContact.avatar}
+            otherUserUsername={selectedContact.username}
             isOnline={selectedContact.userId ? onlineUserIds.has(selectedContact.userId) : false}
           />
         ) : (

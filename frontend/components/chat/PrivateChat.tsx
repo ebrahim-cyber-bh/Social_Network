@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Send, Loader2, UserIcon, Smile, X } from "lucide-react";
 import { User } from "@/lib/interfaces";
 import { PrivateChatMessage } from "@/lib/chat/interface";
@@ -15,6 +16,7 @@ interface PrivateChatProps {
   otherUserName: string;
   otherUserId?: number;
   otherUserAvatar?: string;
+  otherUserUsername?: string;
   isOnline?: boolean;
 }
 
@@ -50,8 +52,10 @@ export default function PrivateChat({
   otherUserName,
   otherUserId,
   otherUserAvatar,
+  otherUserUsername,
   isOnline,
 }: PrivateChatProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<PrivateChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -273,7 +277,10 @@ export default function PrivateChat({
     <div className="flex-1 min-h-0 h-full flex flex-col bg-white dark:bg-surface overflow-hidden">
       {/* Header */}
       <header className="h-16 flex items-center justify-between px-6 bg-surface border-b border-border shrink-0">
-        <div className="flex items-center gap-3">
+        <div
+          className="flex items-center gap-3 cursor-pointer hover:opacity-75 transition-opacity"
+          onClick={() => otherUserUsername && router.push(`/profile/${otherUserUsername}`)}
+        >
           <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden flex-shrink-0">
             {otherUserAvatar ? (
               <img
@@ -297,6 +304,12 @@ export default function PrivateChat({
             ) : null}
           </div>
         </div>
+        <button
+          onClick={() => otherUserUsername && router.push(`/profile/${otherUserUsername}`)}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+        >
+          View Profile
+        </button>
       </header>
 
       {/* Messages */}
