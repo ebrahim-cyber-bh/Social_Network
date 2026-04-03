@@ -3,6 +3,7 @@ package ws
 import (
 	"backend/internal/db/queries"
 	"backend/internal/models"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -82,4 +83,27 @@ func HandlePrivateMessage(sConn *SafeConn, session *models.Session, msg map[stri
 
 	// Broadcast only to conversation participants
 	BroadcastToConversationParticipants(conversationID, response)
+
+	// Create notification for the other participant(s)
+	participants, err := queries.GetConversationParticipants(conversationID)
+	if err == nil {
+		senderName := user.FirstName + " " + user.LastName
+		for _, participantID := range participants {
+			if participantID != session.UserID {
+				// Create notification for other participant with properly encoded JSON
+				dataMap := map[string]interface{}{
+					"sender_id":       session.UserID,
+					"sender_name":     senderName,
+					"sender_avatar":   user.Avatar,
+					"message":         content,
+					"conversation_id": conversationID,
+				}
+				dataBytes, _ := json.Marshal(dataMap)
+				err := queries.CreateNotification(participantID, &session.UserID, "new_message", string(dataBytes))
+				if err != nil {
+					fmt.Printf("Failed to create new_message notification: %v\n", err)
+				}
+			}
+		}
+	}
 }

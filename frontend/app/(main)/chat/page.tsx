@@ -210,17 +210,6 @@ export default function ChatPage() {
               <h2 className="text-lg font-bold text-foreground">Messages</h2>
             </div>
             <div className="flex items-center gap-2">
-              {wsConnected ? (
-                <div className="flex items-center gap-1 text-[10px] text-green-500 font-semibold">
-                  <Wifi className="w-3 h-3" />
-                  <span>Live</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 text-[10px] text-red-400 font-semibold">
-                  <WifiOff className="w-3 h-3" />
-                  <span>Offline</span>
-                </div>
-              )}
             </div>
           </div>
 

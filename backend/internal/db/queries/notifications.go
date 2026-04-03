@@ -11,7 +11,7 @@ func CreateNotification(userID int, actorID *int, notificationType string, data 
 func GetNotifications(userID int) ([]map[string]interface{}, error) {
 	rows, err := DB.Query(`
 		SELECT n.id, n.actor_id, n.type, n.data, n.read, n.created_at,
-		       u.first_name, u.last_name, u.avatar
+		       u.first_name, u.last_name, u.avatar, u.username
 		FROM notifications n
 		LEFT JOIN users u ON n.actor_id = u.id
 		WHERE user_id = ?
@@ -22,15 +22,15 @@ func GetNotifications(userID int) ([]map[string]interface{}, error) {
 	}
 	defer rows.Close()
 
-	var notifications []map[string]interface{}
+	notifications := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var id int
 		var actorID *int
 		var nType, data string
 		var read int
 		var createdAt string
-		var firstName, lastName, avatar *string
-		err := rows.Scan(&id, &actorID, &nType, &data, &read, &createdAt, &firstName, &lastName, &avatar)
+		var firstName, lastName, avatar, username *string
+		err := rows.Scan(&id, &actorID, &nType, &data, &read, &createdAt, &firstName, &lastName, &avatar, &username)
 		if err != nil {
 			return nil, err
 		}
@@ -46,6 +46,7 @@ func GetNotifications(userID int) ([]map[string]interface{}, error) {
 				"first_name": firstName,
 				"last_name":  lastName,
 				"avatar":     avatar,
+				"username":   username,
 			},
 		}
 		notifications = append(notifications, notif)

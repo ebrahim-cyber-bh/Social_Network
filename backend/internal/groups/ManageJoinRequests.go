@@ -84,6 +84,7 @@ func GetJoinRequests(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			requests[i].User = &models.UserPublic{
 				UserId:    user.ID,
+				Username:  user.Username,
 				FirstName: user.FirstName,
 				LastName:  user.LastName,
 				Avatar:    user.Avatar,
