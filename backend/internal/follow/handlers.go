@@ -5,7 +5,7 @@ import (
 	"backend/internal/models"
 	"backend/internal/utils"
 	"backend/internal/ws"
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -51,6 +51,11 @@ func FollowHandler(w http.ResponseWriter, r *http.Request) {
 	// Notify the target user in real-time
 	follower, err := queries.GetUserByID(currentUserID)
 	if err == nil {
+		if status == "pending" {
+			// Broadcast follow request notification
+			ws.BroadcastFollowRequest(target.ID, follower.ID, follower.FirstName+" "+follower.LastName, &follower.Avatar)
+		}
+
 		ws.SendNotificationToUser(target.ID, models.NotificationMessage{
 			Type: "follow_update",
 			Data: map[string]interface{}{
@@ -131,19 +136,41 @@ func GetFollowRequestsHandler(w http.ResponseWriter, r *http.Request) {
 		utils.RespondJSON(w, http.StatusUnauthorized, models.GenericResponse{Success: false, Message: "Unauthorized"})
 		return
 	}
-	requests, err := queries.GetPendingFollowRequests(userID)
+	userRequests, err := queries.GetPendingFollowRequests(userID)
 	if err != nil {
 		utils.RespondJSON(w, http.StatusInternalServerError, models.GenericResponse{Success: false, Message: "Failed to fetch requests"})
 		return
 	}
-	if requests == nil {
-		requests = []models.UserSearchResult{}
+
+	// Transform UserSearchResult into the expected response structure
+	type FollowRequest struct {
+		ID          int                     `json:"id"`
+		RequesterID int                     `json:"requester_id"`
+		CreatedAt   string                  `json:"created_at"`
+		Requester   models.UserSearchResult `json:"requester"`
 	}
+
+	var requests []FollowRequest
+	if userRequests != nil {
+		for _, requester := range userRequests {
+			requests = append(requests, FollowRequest{
+				ID:          requester.UserID, // Use userId as the request ID (since request is identified by follower_id)
+				RequesterID: requester.UserID,
+				CreatedAt:   time.Now().Format(time.RFC3339), // Placeholder - ideally we'd get this from DB
+				Requester:   requester,
+			})
+		}
+	}
+
+	if requests == nil {
+		requests = []FollowRequest{}
+	}
+
 	utils.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "requests": requests})
 }
 
 // HandleFollowRequestHandler handles POST /api/follow/requests/handle
-// Body: { "username": "...", "action": "accept" | "decline" }
+// Body: request_id (follower_id) and action (accept|decline)
 func HandleFollowRequestHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID, ok := utils.GetUserIDFromContext(r)
@@ -151,50 +178,70 @@ func HandleFollowRequestHandler(w http.ResponseWriter, r *http.Request) {
 		utils.RespondJSON(w, http.StatusUnauthorized, models.GenericResponse{Success: false, Message: "Unauthorized"})
 		return
 	}
-	var body struct {
-		Username string `json:"username"`
-		Action   string `json:"action"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Action != "accept" && body.Action != "decline") {
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
 		utils.RespondJSON(w, http.StatusBadRequest, models.GenericResponse{Success: false, Message: "Invalid request"})
 		return
 	}
-	requester, err := queries.GetUserByIdentifier(body.Username)
+
+	requestIDStr := r.FormValue("request_id")
+	action := r.FormValue("action")
+
+	if requestIDStr == "" || (action != "accept" && action != "decline") {
+		utils.RespondJSON(w, http.StatusBadRequest, models.GenericResponse{Success: false, Message: "Invalid request"})
+		return
+	}
+
+	requesterID := 0
+	if _, err := fmt.Sscanf(requestIDStr, "%d", &requesterID); err != nil {
+		utils.RespondJSON(w, http.StatusBadRequest, models.GenericResponse{Success: false, Message: "Invalid request ID"})
+		return
+	}
+
+	// Verify the follow request exists
+	requester, err := queries.GetUserByID(requesterID)
 	if err != nil {
 		utils.RespondJSON(w, http.StatusNotFound, models.GenericResponse{Success: false, Message: "User not found"})
 		return
 	}
-	if body.Action == "accept" {
-		err = queries.AcceptFollowRequest(requester.ID, userID)
+
+	// Handle the request
+	if action == "accept" {
+		err = queries.AcceptFollowRequest(requesterID, userID)
 	} else {
-		err = queries.DeclineFollowRequest(requester.ID, userID)
+		err = queries.DeclineFollowRequest(requesterID, userID)
 	}
+
 	if err != nil {
 		utils.RespondJSON(w, http.StatusInternalServerError, models.GenericResponse{Success: false, Message: "Failed to handle request"})
 		return
 	}
-	// Notify the requester
+
+	// Notify the requester of the decision
 	target, err := queries.GetUserByID(userID)
 	if err == nil {
 		status := "accepted"
-		if body.Action == "decline" {
+		if action == "decline" {
 			status = "none"
 		}
-		ws.SendNotificationToUser(requester.ID, models.NotificationMessage{
+		ws.SendNotificationToUser(requesterID, models.NotificationMessage{
 			Type: "follow_update",
 			Data: map[string]interface{}{
-				"followerId":        requester.ID,
+				"followerId":        requesterID,
 				"followerUsername":  requester.Username,
 				"followerFirstName": requester.FirstName,
 				"followerLastName":  requester.LastName,
 				"followerAvatar":    requester.Avatar,
 				"status":            status,
 				"targetUsername":    target.Username,
+				"action":            action,
 			},
 			Timestamp: time.Now(),
 		})
 	}
-	utils.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "action": body.Action})
+
+	utils.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "action": action})
 }
 
 // GetFollowersHandler handles GET /api/users/{username}/followers

@@ -135,9 +135,27 @@ export default function Navbar({
     ws.on("join_request_rejected", handleNotificationUpdate);
     ws.on("group_join_request", handleNotificationUpdate);
     ws.on("new_event", handleNotificationUpdate);
+    ws.on("follow_request", handleNotificationUpdate);
+    ws.on("new_message", handleNotificationUpdate);
+    ws.on("post_like", handleNotificationUpdate);
+    ws.on("post_comment", handleNotificationUpdate);
+    ws.on("mention", handleNotificationUpdate);
+    ws.on("group_post", handleNotificationUpdate);
+    ws.on("event_reminder", handleNotificationUpdate);
 
     return () => {
       ws.off("group_invitation", handleNotificationUpdate);
+      ws.off("join_request_approved", handleNotificationUpdate);
+      ws.off("join_request_rejected", handleNotificationUpdate);
+      ws.off("group_join_request", handleNotificationUpdate);
+      ws.off("new_event", handleNotificationUpdate);
+      ws.off("follow_request", handleNotificationUpdate);
+      ws.off("new_message", handleNotificationUpdate);
+      ws.off("post_like", handleNotificationUpdate);
+      ws.off("post_comment", handleNotificationUpdate);
+      ws.off("mention", handleNotificationUpdate);
+      ws.off("group_post", handleNotificationUpdate);
+      ws.off("event_reminder", handleNotificationUpdate);
       ws.off("join_request_approved", handleNotificationUpdate);
       ws.off("join_request_rejected", handleNotificationUpdate);
       ws.off("group_join_request", handleNotificationUpdate);

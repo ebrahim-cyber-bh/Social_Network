@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { fetchGroups, requestToJoin } from "@/lib/groups/api";
 import { searchUsers, fetchSuggestedUsers } from "@/lib/users/search";
 import type { UserSearchResult } from "@/lib/users/search";
-import type { Group, GroupPost } from "@/lib/groups/interface";
+import type { Group } from "@/lib/groups/interface";
 import { getCurrentUser } from "@/lib/auth/auth";
 import { ServerError } from "@/lib/errors";
 
@@ -23,75 +23,6 @@ import PostsSection from "@/components/search/PostsSection";
 /* ────────────────────────────────────────────────────────── */
 
 type FilterTab = "all" | "people" | "groups" | "posts";
-
-const PLACEHOLDER_POSTS: GroupPost[] = [
-  {
-    id: -1,
-    content:
-      "How to build scalable apps — exploring the principles of building apps that scale well under heavy load with modern architecture patterns.",
-    user_id: 0,
-    created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    likes: 24,
-    comments: 8,
-    is_liked: false,
-    author: {
-      ID: 0,
-      Email: "",
-      Username: "alex_m",
-      FirstName: "Alex",
-      LastName: "Morgan",
-      Nickname: "",
-      Avatar: "",
-      AboutMe: "",
-      IsPublic: true,
-      CreatedAt: "",
-    },
-  },
-  {
-    id: -2,
-    content:
-      "Design systems 101 — a design system is a collection of reusable components, guided by clear standards, that can be assembled to build any number of applications.",
-    user_id: 0,
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    likes: 41,
-    comments: 15,
-    is_liked: false,
-    author: {
-      ID: 0,
-      Email: "",
-      Username: "jordan_s",
-      FirstName: "Jordan",
-      LastName: "Smith",
-      Nickname: "",
-      Avatar: "",
-      AboutMe: "",
-      IsPublic: true,
-      CreatedAt: "",
-    },
-  },
-  {
-    id: -3,
-    content:
-      "Getting started with Go — Go is an open source programming language that makes it easy to build simple, reliable and efficient software at scale.",
-    user_id: 0,
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    likes: 17,
-    comments: 6,
-    is_liked: false,
-    author: {
-      ID: 0,
-      Email: "",
-      Username: "sam_c",
-      FirstName: "Sam",
-      LastName: "Chen",
-      Nickname: "",
-      Avatar: "",
-      AboutMe: "",
-      IsPublic: true,
-      CreatedAt: "",
-    },
-  },
-];
 
 const PREVIEW_LIMIT = 6;
 
@@ -288,7 +219,7 @@ export default function SearchPage() {
           />
         )}
 
-        {showPosts && <PostsSection posts={PLACEHOLDER_POSTS} />}
+        {showPosts && <PostsSection posts={[]} />}
       </div>
     </div>
   );
