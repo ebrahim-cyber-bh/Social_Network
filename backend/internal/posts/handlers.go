@@ -4,6 +4,7 @@ import (
 	"backend/internal/db/queries"
 	"backend/internal/models"
 	"backend/internal/utils"
+	"encoding/json"
 	"net/http"
 	"strconv"
 )
@@ -388,7 +389,17 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.RespondJSON(w, http.StatusCreated, map[string]interface{}{
+	// Save selected followers for "selected" privacy posts
+	if privacy == "selected" {
+		if raw := r.FormValue("selected_users"); raw != "" {
+			var userIDs []int
+			if err := json.Unmarshal([]byte(raw), &userIDs); err == nil {
+				_ = queries.SetSelectedFollowers(postID, userIDs)
+			}
+		}
+	}
+
+	utils.RespondJSON(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"message": "Post created successfully",
 		"post_id": postID,

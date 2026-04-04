@@ -321,3 +321,45 @@ func GetFollowingListHandler(w http.ResponseWriter, r *http.Request) {
 		"count":     len(following),
 	})
 }
+
+// GetMyFollowersHandler handles GET /api/follow/followers
+// Returns the list of users who follow the current authenticated user (accepted only).
+func GetMyFollowersHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	userID, ok := utils.GetUserIDFromContext(r)
+	if !ok {
+		utils.RespondJSON(w, http.StatusUnauthorized, models.GenericResponse{Success: false, Message: "Unauthorized"})
+		return
+	}
+
+	users, err := queries.GetFollowersWithDetails(userID)
+	if err != nil {
+		utils.RespondJSON(w, http.StatusInternalServerError, models.GenericResponse{Success: false, Message: "Failed to fetch followers"})
+		return
+	}
+
+	type FollowerInfo struct {
+		ID        int    `json:"id"`
+		Username  string `json:"username"`
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Avatar    string `json:"avatar"`
+	}
+
+	result := make([]FollowerInfo, 0, len(users))
+	for _, u := range users {
+		result = append(result, FollowerInfo{
+			ID:        u.ID,
+			Username:  u.Username,
+			FirstName: u.FirstName,
+			LastName:  u.LastName,
+			Avatar:    u.Avatar,
+		})
+	}
+
+	utils.RespondJSON(w, http.StatusOK, map[string]any{
+		"success":   true,
+		"followers": result,
+	})
+}
