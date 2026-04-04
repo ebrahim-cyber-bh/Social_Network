@@ -42,6 +42,7 @@ func SetupRoutes(mux *http.ServeMux) {
 	authHandle(mux, "DELETE /api/follow/{username}", follow.UnfollowHandler)
 	authHandle(mux, "GET /api/follow/requests", follow.GetFollowRequestsHandler)
 	authHandle(mux, "POST /api/follow/requests/handle", follow.HandleFollowRequestHandler)
+	authHandle(mux, "GET /api/follow/followers", follow.GetMyFollowersHandler)
 
 	// ===== GROUPS =====
 	// List & Create

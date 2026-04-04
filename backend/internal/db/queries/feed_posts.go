@@ -71,7 +71,7 @@ func IsInSelectedFollowers(postID int64, userID int) (bool, error) {
 // CreatePost creates a new personal post (no group).
 // Returns the new post ID.
 func CreatePost(userID int, content string, imagePath *string, privacy string) (int64, error) {
-	var imageVal interface{}
+	var imageVal any
 	if imagePath != nil {
 		imageVal = *imagePath
 	}
@@ -118,6 +118,20 @@ func GetPostsByUserID(authorID int) ([]models.Post, error) {
 		posts = append(posts, p)
 	}
 	return posts, rows.Err()
+}
+
+// SetSelectedFollowers saves the chosen user IDs for a "selected" privacy post.
+func SetSelectedFollowers(postID int64, userIDs []int) error {
+	for _, uid := range userIDs {
+		_, err := DB.Exec(
+			`INSERT OR IGNORE INTO post_selected_followers (post_id, user_id) VALUES (?, ?)`,
+			postID, uid,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UpdatePost updates content and privacy of a post.
