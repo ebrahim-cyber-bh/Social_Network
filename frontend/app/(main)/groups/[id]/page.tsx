@@ -24,6 +24,7 @@ import GroupEvents from "@/components/groups/GroupEvents";
 import GroupChat from "@/components/groups/GroupChat";
 import GroupSidebar from "@/components/groups/GroupSidebar";
 import GroupInviteModal from "@/components/groups/GroupInviteModal";
+import { toast } from "@/lib/utils";
 
 interface Creator {
   ID: number;
@@ -230,11 +231,11 @@ export default function GroupDetailPage() {
       if (result.success) {
         router.push("/groups");
       } else {
-        alert(result.message || "Failed to leave group");
+        toast(result.message || "Failed to leave group", "error", "Leave Failed");
       }
     } catch (error) {
       console.error("Error leaving group:", error);
-      alert("Failed to leave group");
+      toast("Failed to leave group", "error", "Leave Failed");
     } finally {
       setIsLeavingGroup(false);
       setShowLeaveConfirm(false);
@@ -248,11 +249,11 @@ export default function GroupDetailPage() {
       if (result.success) {
         router.push("/groups");
       } else {
-        alert(result.message || "Failed to delete group");
+        toast(result.message || "Failed to delete group", "error", "Delete Failed");
       }
     } catch (error) {
       console.error("Error deleting group:", error);
-      alert("Failed to delete group");
+      toast("Failed to delete group", "error", "Delete Failed");
     } finally {
       setIsDeletingGroup(false);
       setShowDeleteConfirm(false);

@@ -115,7 +115,7 @@ export default function SearchPage() {
     if (result.success) {
       const wasAutoAccepted = result.message?.includes("added to the group");
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         title: wasAutoAccepted ? "Welcome to the Group!" : "Request Sent",
         message: wasAutoAccepted
           ? "You had a pending invitation and were automatically added!"
@@ -136,7 +136,7 @@ export default function SearchPage() {
       );
     } else {
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         title: "Error",
         message: result.message || "Failed to send join request",
         type: "error",

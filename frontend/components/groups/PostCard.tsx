@@ -168,7 +168,7 @@ export default function PostCard({
 
         // Show success notification
         (globalThis as any).addToast({
-          id: crypto.randomUUID(),
+          id: Date.now().toString(),
           title: "Link Copied",
           message: "Post link copied to clipboard",
           type: "success",
@@ -196,7 +196,7 @@ export default function PostCard({
       if (response.success) {
         onDelete?.(post.id);
         (globalThis as any).addToast({
-          id: crypto.randomUUID(),
+          id: Date.now().toString(),
           title: "Post Deleted",
           message: "The post has been deleted successfully",
           type: "success",
@@ -204,7 +204,7 @@ export default function PostCard({
         });
       } else {
         (globalThis as any).addToast({
-          id: crypto.randomUUID(),
+          id: Date.now().toString(),
           title: "Error",
           message: "Failed to delete post. Please try again.",
           type: "error",
@@ -214,7 +214,7 @@ export default function PostCard({
     } catch (error) {
       console.error("Failed to delete post:", error);
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         title: "Error",
         message: "Failed to delete post. Please try again.",
         type: "error",

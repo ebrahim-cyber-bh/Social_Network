@@ -4,6 +4,7 @@ import PostCard from "@/components/groups/PostCard";
 import { GroupPost, Group } from "@/lib/groups/interface";
 import { User } from "@/lib/interfaces";
 import { createGroupPost } from "@/lib/groups/api";
+import { toast } from "@/lib/utils";
 
 interface GroupFeedProps {
   group: Group;
@@ -63,11 +64,11 @@ export default function GroupFeed({
         setImagePreview(null);
         onPostCreated();
       } else {
-        alert(result.message || "Failed to create post");
+        toast(result.message || "Failed to create post", "error", "Post Failed");
       }
     } catch (error) {
       console.error("Error creating post:", error);
-      alert("Failed to create post");
+      toast("Failed to create post", "error", "Post Failed");
     } finally {
       setIsCreatingPost(false);
     }

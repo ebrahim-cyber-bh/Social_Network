@@ -70,19 +70,28 @@ type PendingFollowRequest = {
 
 async function fetchNotifications(): Promise<NotificationItem[]> {
   try {
-    console.log("[Notifications API] Fetching notifications from:", `${API_URL}/api/notifications`);
+    console.log(
+      "[Notifications API] Fetching notifications from:",
+      `${API_URL}/api/notifications`,
+    );
     const response = await fetch(`${API_URL}/api/notifications`, {
       credentials: "include",
     });
     console.log("[Notifications API] Response status:", response.status);
     if (!response.ok) {
-      console.error("[Notifications API] Response not OK:", response.statusText);
+      console.error(
+        "[Notifications API] Response not OK:",
+        response.statusText,
+      );
       return [];
     }
     const data = await response.json();
     console.log("[Notifications API] Raw response:", data);
     const notifications = data.notifications || [];
-    console.log("[Notifications API] Notifications count:", notifications.length);
+    console.log(
+      "[Notifications API] Notifications count:",
+      notifications.length,
+    );
     return notifications;
   } catch (error) {
     console.error("[Notifications API] Error:", error);
@@ -134,30 +143,45 @@ function emitUnreadCountChanged(unreadCount: number) {
   );
 }
 
-function buildActivityText(item: NotificationItem): { title: string; subtitle: string } {
+function buildActivityText(item: NotificationItem): {
+  title: string;
+  subtitle: string;
+} {
   const payload = safeJsonParse(item.data);
-  const actorName = `${item.actor?.first_name || ""} ${item.actor?.last_name || ""}`.trim() || "Someone";
-  const message = typeof payload.message === "string" && payload.message.trim() ? payload.message : "";
-  const subtitle = typeof payload.subtitle === "string" && payload.subtitle.trim()
-    ? payload.subtitle
-    : item.type?.replace(/_/g, " ").toUpperCase() || "Notification";
+  const actorName =
+    `${item.actor?.first_name || ""} ${item.actor?.last_name || ""}`.trim() ||
+    "Someone";
+  const message =
+    typeof payload.message === "string" && payload.message.trim()
+      ? payload.message
+      : "";
+  const subtitle =
+    typeof payload.subtitle === "string" && payload.subtitle.trim()
+      ? payload.subtitle
+      : item.type?.replace(/_/g, " ").toUpperCase() || "Notification";
 
   switch (item.type) {
     case "join_request_approved":
       return {
-        title: message || `You joined ${payload.group_name ? `'${payload.group_name}'` : "'a group'"}`,
+        title:
+          message ||
+          `You joined ${payload.group_name ? `'${payload.group_name}'` : "'a group'"}`,
         subtitle,
       };
 
     case "join_request_rejected":
       return {
-        title: message || `Your request to join ${payload.group_name ? `'${payload.group_name}'` : "'a group'"} was rejected`,
+        title:
+          message ||
+          `Your request to join ${payload.group_name ? `'${payload.group_name}'` : "'a group'"} was rejected`,
         subtitle,
       };
 
     case "group_invitation":
       return {
-        title: message || `${actorName} invited you to ${payload.group_name ? `'${payload.group_name}'` : "a group"}`,
+        title:
+          message ||
+          `${actorName} invited you to ${payload.group_name ? `'${payload.group_name}'` : "a group"}`,
         subtitle,
       };
 
@@ -201,25 +225,40 @@ export default function NotificationsPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [invitations, setInvitations] = useState<GroupInvitation[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<PendingJoinRequest[]>([]);
-  const [followRequests, setFollowRequests] = useState<PendingFollowRequest[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<PendingJoinRequest[]>(
+    [],
+  );
+  const [followRequests, setFollowRequests] = useState<PendingFollowRequest[]>(
+    [],
+  );
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [viewAllNotifications, setViewAllNotifications] = useState(false);
 
   const unreadCount = useMemo(
-    () => notifications.filter((notification: NotificationItem) => notification.read === 0).length,
+    () =>
+      notifications.filter(
+        (notification: NotificationItem) => notification.read === 0,
+      ).length,
     [notifications],
   );
 
+  useEffect(() => {
+    emitUnreadCountChanged(unreadCount);
+  }, [unreadCount]);
+
   const loadAll = async (ownerUserId: number | null) => {
-    console.log("[Notifications] loadAll called with ownerUserId:", ownerUserId);
-    const [notificationData, invitationData, groupsData, followRequestsData] = await Promise.all([
-      fetchNotifications(),
-      fetchGroupInvitations(),
-      fetchGroups(),
-      getFollowRequests(),
-    ]);
+    console.log(
+      "[Notifications] loadAll called with ownerUserId:",
+      ownerUserId,
+    );
+    const [notificationData, invitationData, groupsData, followRequestsData] =
+      await Promise.all([
+        fetchNotifications(),
+        fetchGroupInvitations(),
+        fetchGroups(),
+        getFollowRequests(),
+      ]);
 
     console.log("[Notifications] Loaded data:", {
       notifications: notificationData.length,
@@ -227,10 +266,17 @@ export default function NotificationsPage() {
       followRequests: followRequestsData?.requests?.length || 0,
     });
     console.log("[Notifications] Notification items:", notificationData);
-    console.log("[Notifications] Follow requests raw:", followRequestsData?.requests);
+    console.log(
+      "[Notifications] Follow requests raw:",
+      followRequestsData?.requests,
+    );
 
     setNotifications(notificationData);
-    console.log("[Notifications] Notifications state set to:", notificationData.length, "items");
+    console.log(
+      "[Notifications] Notifications state set to:",
+      notificationData.length,
+      "items",
+    );
     setInvitations(invitationData?.invitations || []);
     setFollowRequests(followRequestsData?.requests || []);
 
@@ -259,7 +305,10 @@ export default function NotificationsPage() {
       bucket.requests.forEach((request: any) => {
         console.log("[Join Request Debug] Raw request data:", request);
         if (request.user) {
-          console.log("[Join Request Debug] User object fields:", Object.keys(request.user));
+          console.log(
+            "[Join Request Debug] User object fields:",
+            Object.keys(request.user),
+          );
         }
         merged.push({
           id: request.id,
@@ -346,10 +395,14 @@ export default function NotificationsPage() {
     const success = await markAllNotificationsRead();
 
     if (success) {
-      setNotifications((prev: NotificationItem[]) => prev.map((notification: NotificationItem) => ({ ...notification, read: 1 })));
-      emitUnreadCountChanged(0);
+      setNotifications((prev: NotificationItem[]) =>
+        prev.map((notification: NotificationItem) => ({
+          ...notification,
+          read: 1,
+        })),
+      );
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         title: "Updated",
         message: "All notifications marked as read",
         type: "success",
@@ -365,10 +418,10 @@ export default function NotificationsPage() {
 
     setNotifications((prev: NotificationItem[]) => {
       const next = prev.map((notification: NotificationItem) =>
-        notification.id === notificationId ? { ...notification, read: 1 } : notification,
+        notification.id === notificationId
+          ? { ...notification, read: 1 }
+          : notification,
       );
-      const unread = next.filter((notification: NotificationItem) => Number(notification.read) === 0).length;
-      emitUnreadCountChanged(unread);
       return next;
     });
   };
@@ -437,15 +490,23 @@ export default function NotificationsPage() {
     }
   };
 
-  const onHandleInvitation = async (invitationId: number, action: "accept" | "decline") => {
+  const onHandleInvitation = async (
+    invitationId: number,
+    action: "accept" | "decline",
+  ) => {
     setProcessingId(invitationId);
     const result = await handleGroupInvitation(invitationId, action);
 
     if (result.success) {
-      setInvitations((prev: GroupInvitation[]) => prev.filter((invitation: GroupInvitation) => invitation.id !== invitationId));
+      setInvitations((prev: GroupInvitation[]) =>
+        prev.filter(
+          (invitation: GroupInvitation) => invitation.id !== invitationId,
+        ),
+      );
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
-        title: action === "accept" ? "Invitation accepted" : "Invitation declined",
+        id: Date.now().toString(),
+        title:
+          action === "accept" ? "Invitation accepted" : "Invitation declined",
         message: result.message || "Done",
         type: action === "accept" ? "success" : "info",
       });
@@ -454,14 +515,19 @@ export default function NotificationsPage() {
     setProcessingId(null);
   };
 
-  const onHandleJoinRequest = async (requestId: number, action: "approve" | "reject") => {
+  const onHandleJoinRequest = async (
+    requestId: number,
+    action: "approve" | "reject",
+  ) => {
     setProcessingId(requestId);
     const result = await handleJoinRequest(requestId, action);
 
     if (result.success) {
-      setPendingRequests((prev: PendingJoinRequest[]) => prev.filter((request: PendingJoinRequest) => request.id !== requestId));
+      setPendingRequests((prev: PendingJoinRequest[]) =>
+        prev.filter((request: PendingJoinRequest) => request.id !== requestId),
+      );
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         title: action === "approve" ? "Request approved" : "Request rejected",
         message: result.message || "Done",
         type: action === "approve" ? "success" : "info",
@@ -471,8 +537,13 @@ export default function NotificationsPage() {
     setProcessingId(null);
   };
 
-  const onHandleFollowRequest = async (requestId: number, action: "accept" | "decline") => {
-    console.log(`[Follow Request] Handling request ${requestId} with action ${action}`);
+  const onHandleFollowRequest = async (
+    requestId: number,
+    action: "accept" | "decline",
+  ) => {
+    console.log(
+      `[Follow Request] Handling request ${requestId} with action ${action}`,
+    );
     setProcessingId(requestId);
     const result = await handleFollowRequest(requestId, action);
 
@@ -480,20 +551,28 @@ export default function NotificationsPage() {
 
     if (result.success) {
       setFollowRequests((prev: PendingFollowRequest[]) => {
-        const updated = prev.filter((request: PendingFollowRequest) => request.id !== requestId);
-        console.log(`[Follow Request] Removed request ${requestId}, remaining:`, updated);
+        const updated = prev.filter(
+          (request: PendingFollowRequest) => request.id !== requestId,
+        );
+        console.log(
+          `[Follow Request] Removed request ${requestId}, remaining:`,
+          updated,
+        );
         return updated;
       });
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
-        title: action === "accept" ? "Follow request accepted" : "Follow request declined",
+        id: Date.now().toString(),
+        title:
+          action === "accept"
+            ? "Follow request accepted"
+            : "Follow request declined",
         message: result.message || "Done",
         type: action === "accept" ? "success" : "info",
       });
     } else {
       console.error(`[Follow Request] Failed:`, result.message);
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         title: "Error",
         message: result.message || "Failed to handle request",
         type: "error",
@@ -516,15 +595,21 @@ export default function NotificationsPage() {
       <div className="max-w-7xl mx-auto">
         <header className="mb-8 flex items-end justify-between">
           <div>
-            <h1 className="text-4xl font-black tracking-tight mb-2">Notifications</h1>
-            <p className="text-muted font-medium">Manage activity and incoming requests</p>
+            <h1 className="text-4xl font-black tracking-tight mb-2">
+              Notifications
+            </h1>
+            <p className="text-muted font-medium">
+              Manage activity and incoming requests
+            </p>
           </div>
           <button
             onClick={onMarkAllRead}
             disabled={markingAllRead || unreadCount === 0}
             className="px-4 py-2 bg-surface hover:bg-foreground/5 border border-border rounded-xl text-xs font-bold transition-all disabled:opacity-50"
           >
-            {markingAllRead ? "Updating..." : `Mark all as read${unreadCount ? ` (${unreadCount})` : ""}`}
+            {markingAllRead
+              ? "Updating..."
+              : `Mark all as read${unreadCount ? ` (${unreadCount})` : ""}`}
           </button>
         </header>
 
@@ -538,7 +623,9 @@ export default function NotificationsPage() {
                   onClick={() => setViewAllNotifications(!viewAllNotifications)}
                   className="ml-auto text-xs text-primary hover:underline font-medium"
                 >
-                  {viewAllNotifications ? "Show Less" : `View All (${notifications.length})`}
+                  {viewAllNotifications
+                    ? "Show Less"
+                    : `View All (${notifications.length})`}
                 </button>
               )}
             </div>
@@ -546,12 +633,18 @@ export default function NotificationsPage() {
             <div className="rounded-3xl border border-border bg-surface p-2">
               <div className="space-y-1 max-h-[70vh] overflow-y-auto">
                 {notifications.length === 0 && (
-                  <div className="p-8 text-center text-sm text-muted">No recent activity yet.</div>
+                  <div className="p-8 text-center text-sm text-muted">
+                    No recent activity yet.
+                  </div>
                 )}
 
-                {(viewAllNotifications ? notifications : notifications.slice(0, 10)).map((item: NotificationItem) => {
+                {(viewAllNotifications
+                  ? notifications
+                  : notifications.slice(0, 10)
+                ).map((item: NotificationItem) => {
                   const { title, subtitle } = buildActivityText(item);
-                  const actorName = `${item.actor?.first_name || ""} ${item.actor?.last_name || ""}`.trim();
+                  const actorName =
+                    `${item.actor?.first_name || ""} ${item.actor?.last_name || ""}`.trim();
 
                   return (
                     <button
@@ -575,15 +668,21 @@ export default function NotificationsPage() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start gap-2">
-                          <p className="text-sm leading-relaxed line-clamp-2 group-hover:text-foreground transition-colors">{title}</p>
+                          <p className="text-sm leading-relaxed line-clamp-2 group-hover:text-foreground transition-colors">
+                            {title}
+                          </p>
                           <span className="text-[11px] text-muted font-medium whitespace-nowrap flex-shrink-0">
                             {formatTimeAgo(item.created_at)}
                           </span>
                         </div>
-                        <p className="text-[11px] text-muted font-bold uppercase tracking-wider mt-1">{subtitle}</p>
+                        <p className="text-[11px] text-muted font-bold uppercase tracking-wider mt-1">
+                          {subtitle}
+                        </p>
                       </div>
 
-                      {item.read === 0 && <div className="w-2 h-2 bg-primary rounded-full mt-2 self-start flex-shrink-0 animate-pulse" />}
+                      {item.read === 0 && (
+                        <div className="w-2 h-2 bg-primary rounded-full mt-2 self-start flex-shrink-0 animate-pulse" />
+                      )}
                     </button>
                   );
                 })}
@@ -595,34 +694,50 @@ export default function NotificationsPage() {
             <div className="flex items-center gap-2 mb-4 px-2">
               <h2 className="text-lg font-bold">Requests</h2>
               <span className="ml-auto px-2 py-0.5 bg-primary/20 text-primary text-[10px] font-black rounded uppercase">
-                {invitations.length + pendingRequests.length + followRequests.length} Pending
+                {invitations.length +
+                  pendingRequests.length +
+                  followRequests.length}{" "}
+                Pending
               </span>
             </div>
 
             <div className="space-y-6 max-h-[70vh] overflow-y-auto">
               <div className="rounded-3xl border border-border bg-surface p-6 space-y-4">
-                <h3 className="text-xs font-black uppercase tracking-widest text-muted">Group Invites</h3>
+                <h3 className="text-xs font-black uppercase tracking-widest text-muted">
+                  Group Invites
+                </h3>
                 <div className="space-y-3">
                   {!invitations.length && (
-                    <p className="text-sm text-muted">No pending invitations.</p>
+                    <p className="text-sm text-muted">
+                      No pending invitations.
+                    </p>
                   )}
 
                   {invitations.map((invite: GroupInvitation) => (
-                    <div key={invite.id} className="bg-background/60 p-4 rounded-2xl border border-border">
+                    <div
+                      key={invite.id}
+                      className="bg-background/60 p-4 rounded-2xl border border-border"
+                    >
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-xl border border-border bg-background flex items-center justify-center flex-shrink-0">
                           <User className="w-4 h-4 text-muted" />
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold truncate">{invite.group_name}</p>
-                          <p className="text-[11px] text-muted truncate">Invited by {invite.inviter_name}</p>
+                          <p className="text-sm font-bold truncate">
+                            {invite.group_name}
+                          </p>
+                          <p className="text-[11px] text-muted truncate">
+                            Invited by {invite.inviter_name}
+                          </p>
                         </div>
                       </div>
 
                       <div className="flex gap-2 mt-3">
                         <button
-                          onClick={() => onHandleInvitation(invite.id, "accept")}
+                          onClick={() =>
+                            onHandleInvitation(invite.id, "accept")
+                          }
                           disabled={processingId === invite.id}
                           className="flex-1 py-2 bg-green-500/10 text-green-500 text-xs font-bold rounded-lg hover:bg-green-500/20 disabled:opacity-50 flex items-center justify-center gap-1"
                         >
@@ -630,7 +745,9 @@ export default function NotificationsPage() {
                           Accept
                         </button>
                         <button
-                          onClick={() => onHandleInvitation(invite.id, "decline")}
+                          onClick={() =>
+                            onHandleInvitation(invite.id, "decline")
+                          }
                           disabled={processingId === invite.id}
                           className="flex-1 py-2 bg-red-500/10 text-red-500 text-xs font-bold rounded-lg hover:bg-red-500/20 disabled:opacity-50 flex items-center justify-center gap-1"
                         >
@@ -644,80 +761,106 @@ export default function NotificationsPage() {
               </div>
 
               <div className="rounded-3xl border border-border bg-surface p-6 space-y-4">
-                <h3 className="text-xs font-black uppercase tracking-widest text-muted">Join Requests</h3>
+                <h3 className="text-xs font-black uppercase tracking-widest text-muted">
+                  Join Requests
+                </h3>
                 <div className="space-y-3">
                   {!pendingRequests.length && (
-                    <p className="text-sm text-muted">No pending join requests.</p>
+                    <p className="text-sm text-muted">
+                      No pending join requests.
+                    </p>
                   )}
 
                   {pendingRequests.map((request: PendingJoinRequest) => {
                     console.log("[Join Request Render] Request:", request);
-                    console.log("[Join Request Render] User object:", request.user);
+                    console.log(
+                      "[Join Request Render] User object:",
+                      request.user,
+                    );
                     return (
-                    <div key={request.id} className="bg-background/60 p-4 rounded-2xl border border-border">
-                      <div className="flex items-start gap-3">
-                        {request.user?.avatar ? (
-                          <img
-                            src={`${API_URL}${request.user.avatar}`}
-                            alt={request.user.username || "User"}
-                            className="w-10 h-10 rounded-xl object-cover flex-shrink-0"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-xl border border-border bg-background flex items-center justify-center flex-shrink-0">
-                            <User className="w-4 h-4 text-muted" />
-                          </div>
-                        )}
+                      <div
+                        key={request.id}
+                        className="bg-background/60 p-4 rounded-2xl border border-border"
+                      >
+                        <div className="flex items-start gap-3">
+                          {request.user?.avatar ? (
+                            <img
+                              src={`${API_URL}${request.user.avatar}`}
+                              alt={request.user.username || "User"}
+                              className="w-10 h-10 rounded-xl object-cover flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl border border-border bg-background flex items-center justify-center flex-shrink-0">
+                              <User className="w-4 h-4 text-muted" />
+                            </div>
+                          )}
 
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold truncate">
-                            {(request.user?.firstName || "User")} {(request.user?.lastName || "")}
-                          </p>
-                          <p className="text-[11px] text-muted truncate">
-                            @{request.user?.username || "user"} requested {request.group_name}
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold truncate">
+                              {request.user?.firstName || "User"}{" "}
+                              {request.user?.lastName || ""}
+                            </p>
+                            <p className="text-[11px] text-muted truncate">
+                              @{request.user?.username || "user"} requested{" "}
+                              {request.group_name}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={() =>
+                              onHandleJoinRequest(request.id, "approve")
+                            }
+                            disabled={processingId === request.id}
+                            className="flex-1 py-2 bg-green-500/10 text-green-500 text-xs font-bold rounded-lg hover:bg-green-500/20 disabled:opacity-50 flex items-center justify-center gap-1"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            Approve
+                          </button>
+                          <button
+                            onClick={() =>
+                              onHandleJoinRequest(request.id, "reject")
+                            }
+                            disabled={processingId === request.id}
+                            className="flex-1 py-2 bg-red-500/10 text-red-500 text-xs font-bold rounded-lg hover:bg-red-500/20 disabled:opacity-50 flex items-center justify-center gap-1"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            Reject
+                          </button>
                         </div>
                       </div>
-
-                      <div className="flex gap-2 mt-3">
-                        <button
-                          onClick={() => onHandleJoinRequest(request.id, "approve")}
-                          disabled={processingId === request.id}
-                          className="flex-1 py-2 bg-green-500/10 text-green-500 text-xs font-bold rounded-lg hover:bg-green-500/20 disabled:opacity-50 flex items-center justify-center gap-1"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => onHandleJoinRequest(request.id, "reject")}
-                          disabled={processingId === request.id}
-                          className="flex-1 py-2 bg-red-500/10 text-red-500 text-xs font-bold rounded-lg hover:bg-red-500/20 disabled:opacity-50 flex items-center justify-center gap-1"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          Reject
-                        </button>
-                      </div>
-                    </div>
                     );
                   })}
                 </div>
               </div>
 
               <div className="rounded-3xl border border-border bg-surface p-6 space-y-4">
-                <h3 className="text-xs font-black uppercase tracking-widest text-muted">Follow Requests</h3>
+                <h3 className="text-xs font-black uppercase tracking-widest text-muted">
+                  Follow Requests
+                </h3>
                 <div className="space-y-3">
                   {!followRequests.length && (
-                    <p className="text-sm text-muted">No pending follow requests.</p>
+                    <p className="text-sm text-muted">
+                      No pending follow requests.
+                    </p>
                   )}
 
                   {followRequests.map((request: PendingFollowRequest) => {
                     console.log("[Render] Follow request item:", request);
                     const requester = request.requester;
                     if (!requester) {
-                      console.warn("[Render] Missing requester for request:", request);
+                      console.warn(
+                        "[Render] Missing requester for request:",
+                        request,
+                      );
                       return null;
                     }
                     return (
-                      <div key={request.id} className="bg-background/60 p-4 rounded-2xl border border-border">
+                      <div
+                        key={request.id}
+                        className="bg-background/60 p-4 rounded-2xl border border-border"
+                      >
                         <div className="flex items-start gap-3">
                           {requester.avatar ? (
                             <img
@@ -733,10 +876,12 @@ export default function NotificationsPage() {
 
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold truncate">
-                              {(requester.firstName || "User")} {(requester.lastName || "")}
+                              {requester.firstName || "User"}{" "}
+                              {requester.lastName || ""}
                             </p>
                             <p className="text-[11px] text-muted truncate">
-                              @{requester.username || "user"} wants to follow you
+                              @{requester.username || "user"} wants to follow
+                              you
                             </p>
                           </div>
                         </div>
@@ -744,7 +889,10 @@ export default function NotificationsPage() {
                         <div className="flex gap-2 mt-3">
                           <button
                             onClick={() => {
-                              console.log("[Button] Accept clicked for request:", request.id);
+                              console.log(
+                                "[Button] Accept clicked for request:",
+                                request.id,
+                              );
                               onHandleFollowRequest(request.id, "accept");
                             }}
                             disabled={processingId === request.id}
@@ -755,7 +903,10 @@ export default function NotificationsPage() {
                           </button>
                           <button
                             onClick={() => {
-                              console.log("[Button] Decline clicked for request:", request.id);
+                              console.log(
+                                "[Button] Decline clicked for request:",
+                                request.id,
+                              );
                               onHandleFollowRequest(request.id, "decline");
                             }}
                             disabled={processingId === request.id}

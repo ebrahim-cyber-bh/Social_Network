@@ -5,6 +5,7 @@ import ConfirmModal from "@/components/ui/confirm";
 import Link from "next/link";
 import { on, off, requestOnlineUsers } from "@/lib/ws/ws";
 import { API_URL } from "@/lib/config";
+import { toast } from "@/lib/utils";
 
 interface GroupMembersProps {
   groupId: number;
@@ -79,11 +80,11 @@ export default function GroupMembers({
         setMemberToKick(null);
         onMemberKicked?.();
       } else {
-        alert(response.message || "Failed to kick member");
+        toast(response.message || "Failed to kick member", "error", "Remove Failed");
       }
     } catch (error) {
       console.error("Error kicking member:", error);
-      alert("Failed to kick member");
+      toast("Failed to kick member", "error", "Remove Failed");
     } finally {
       setIsKicking(false);
     }

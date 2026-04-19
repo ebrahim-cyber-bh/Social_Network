@@ -23,7 +23,7 @@ export default function MainLayout({
         const handleApproved = (data: any) => {
           if (data.type === "join_request_approved") {
             (globalThis as any).addToast({
-              id: crypto.randomUUID(),
+              id: Date.now().toString(),
               title: "Request Approved!",
               message: data.data.message || `You can now access ${data.data.group_name}`,
               type: "success",
@@ -36,7 +36,7 @@ export default function MainLayout({
         const handleRejected = (data: any) => {
           if (data.type === "join_request_rejected") {
             (globalThis as any).addToast({
-              id: crypto.randomUUID(),
+              id: Date.now().toString(),
               title: "Request Declined",
               message: data.data.message || `Your request to join ${data.data.group_name} was declined`,
               type: "error",
@@ -49,7 +49,7 @@ export default function MainLayout({
         const handleInvitation = (data: any) => {
           if (data.type === "group_invitation") {
             (globalThis as any).addToast({
-              id: crypto.randomUUID(),
+              id: Date.now().toString(),
               title: "Group Invitation",
               message: `${data.data.inviter_name} invited you to join ${data.data.group_name}`,
               type: "info",
@@ -65,7 +65,7 @@ export default function MainLayout({
           const name = [d.followerFirstName, d.followerLastName].filter(Boolean).join(" ") || d.followerUsername;
           if (d.status === "none") return;
           (globalThis as any).addToast({
-            id: crypto.randomUUID(),
+            id: Date.now().toString(),
             title: d.status === "pending" ? "Follow Request" : "New Follower",
             message: d.status === "pending"
               ? `${name} requested to follow you`

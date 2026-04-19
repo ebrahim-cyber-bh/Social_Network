@@ -5,6 +5,7 @@ import { respondToEvent, deleteGroupEvent } from "@/lib/groups/api";
 import { User as AuthUser } from "@/lib/interfaces";
 import ConfirmModal from "@/components/ui/confirm";
 import { API_URL } from "@/lib/config";
+import { toast } from "@/lib/utils";
 
 interface GroupEventsProps {
   events: GroupEvent[];
@@ -38,7 +39,7 @@ export default function GroupEvents({
         setShowDeleteModal(false);
         setEventToDelete(null);
       } else {
-        alert(res.message || "Failed to delete event");
+        toast(res.message || "Failed to delete event", "error", "Delete Failed");
       }
     } finally {
       setDeletingId(null);

@@ -23,7 +23,7 @@ export function toast(
   playToastSound(type);
 
   (globalThis as any).addToast({
-    id: crypto.randomUUID(),
+    id: Date.now().toString(),
     message,
     type,
     title,

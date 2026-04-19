@@ -97,7 +97,7 @@ export default function FeedPostFull({
     try {
       await deletePost(post.id);
       (globalThis as any).addToast?.({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         title: "Post Deleted",
         message: "The post has been deleted successfully",
         type: "success",
@@ -110,7 +110,7 @@ export default function FeedPostFull({
       setShowDeleteModal(false);
       onNavBlock?.(false);
       (globalThis as any).addToast?.({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         title: "Error",
         message: "Failed to delete post. Please try again.",
         type: "error",

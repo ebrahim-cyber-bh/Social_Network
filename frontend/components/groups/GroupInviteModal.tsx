@@ -7,6 +7,7 @@ import {
 } from "@/lib/groups/api";
 import { Group } from "@/lib/groups/interface";
 import { API_URL } from "@/lib/config";
+import { toast } from "@/lib/utils";
 
 interface GroupInviteModalProps {
   isOpen: boolean;
@@ -76,7 +77,7 @@ export default function GroupInviteModal({
       }
 
       if (lastError) {
-        alert(lastError);
+        toast(lastError, "error", "Invite Failed");
         return;
       }
 
@@ -95,7 +96,7 @@ export default function GroupInviteModal({
       // Show success message
       if (autoAcceptedCount > 0 && invitedCount > 0) {
         (globalThis as any).addToast({
-          id: crypto.randomUUID(),
+          id: Date.now().toString(),
           title: "Success",
           message: `${autoAcceptedCount} user(s) automatically added (had pending requests), ${invitedCount} invitation(s) sent`,
           type: "success",
@@ -103,7 +104,7 @@ export default function GroupInviteModal({
         });
       } else if (autoAcceptedCount > 0) {
         (globalThis as any).addToast({
-          id: crypto.randomUUID(),
+          id: Date.now().toString(),
           title: "Users Automatically Added",
           message: `${autoAcceptedCount} user(s) had pending join requests and were automatically added to the group`,
           type: "success",
@@ -111,7 +112,7 @@ export default function GroupInviteModal({
         });
       } else {
         (globalThis as any).addToast({
-          id: crypto.randomUUID(),
+          id: Date.now().toString(),
           title: "Invitations Sent",
           message: `${invitedCount} invitation(s) sent successfully`,
           type: "success",
@@ -124,7 +125,7 @@ export default function GroupInviteModal({
       onSuccess();
     } catch (err) {
       console.error("Error sending invites", err);
-      alert("Failed to send invites");
+      toast("Failed to send invites", "error", "Invite Failed");
     } finally {
       setIsInviting(false);
     }

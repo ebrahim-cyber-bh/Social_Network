@@ -86,21 +86,83 @@ func ValidateUserCanPostOrCreateEvent(r *http.Request, groupID int64, isMemberCh
 // SaveUploadedFile saves an uploaded file to the specified directory
 // Returns the path in the format /uploads/{directory}/{filename}
 func SaveUploadedFile(file multipart.File, header *multipart.FileHeader, directory string) (string, error) {
-	// Validate file type
-	contentType := header.Header.Get("Content-Type")
-	allowedTypes := map[string]bool{
-		"image/jpeg":      true,
-		"image/jpg":       true,
-		"image/png":       true,
-		"image/webp":      true,
-		"image/gif":       true,
-		"video/mp4":       true,
-		"video/webm":      true,
-		"video/quicktime": true,
+	allowedTypesByDirectory := map[string]map[string]bool{
+		"avatars": {
+			"image/jpeg": true,
+			"image/png":  true,
+			"image/webp": true,
+			"image/gif":  true,
+		},
+		"groups": {
+			"image/jpeg": true,
+			"image/png":  true,
+			"image/webp": true,
+			"image/gif":  true,
+		},
+		"posts": {
+			"image/jpeg":      true,
+			"image/png":       true,
+			"image/webp":      true,
+			"image/gif":       true,
+			"video/mp4":       true,
+			"video/webm":      true,
+			"video/quicktime": true,
+		},
 	}
 
+	allowedTypes, ok := allowedTypesByDirectory[directory]
+	if !ok {
+		return "", errors.New("invalid upload destination")
+	}
+
+	allowedExtensions := map[string]map[string]bool{
+		"image/jpeg": {
+			".jpg":  true,
+			".jpeg": true,
+		},
+		"image/png": {
+			".png": true,
+		},
+		"image/webp": {
+			".webp": true,
+		},
+		"image/gif": {
+			".gif": true,
+		},
+		"video/mp4": {
+			".mp4": true,
+		},
+		"video/webm": {
+			".webm": true,
+		},
+		"video/quicktime": {
+			".mov": true,
+			".qt":  true,
+		},
+	}
+
+	// Validate the real file type from the file bytes instead of trusting the client header.
+	sniff := make([]byte, 512)
+	n, err := io.ReadFull(file, sniff)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", errors.New("failed to read uploaded file")
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", errors.New("failed to process uploaded file")
+	}
+
+	contentType := http.DetectContentType(sniff[:n])
 	if !allowedTypes[contentType] {
-		return "", errors.New("file must be JPEG, PNG, WebP, GIF, MP4, WebM, or MOV")
+		if directory == "posts" {
+			return "", errors.New("file must be a JPEG, PNG, WebP, GIF, MP4, WebM, or MOV")
+		}
+		return "", errors.New("file must be a JPEG, PNG, WebP, or GIF image")
+	}
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext == "" || !allowedExtensions[contentType][ext] {
+		return "", errors.New("file extension does not match the uploaded file type")
 	}
 
 	// Enforce size limits: 10 MB for images/GIFs, 25 MB for videos
@@ -119,7 +181,6 @@ func SaveUploadedFile(file multipart.File, header *multipart.FileHeader, directo
 	}
 
 	// Generate unique filename
-	ext := filepath.Ext(header.Filename)
 	filename := fmt.Sprintf("%d_%s%s", time.Now().Unix(), GenerateSessionID(), ext)
 
 	// Ensure directory exists

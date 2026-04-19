@@ -35,7 +35,7 @@ export default function JoinRequests({
         ) {
           // Show notification toast
           (globalThis as any).addToast({
-            id: crypto.randomUUID(),
+            id: Date.now().toString(),
             title: "New Join Request",
             message: `${data.data.user?.firstName || "Someone"} wants to join ${data.data.group_name}`,
             type: "info",
@@ -104,7 +104,7 @@ export default function JoinRequests({
       if (result.success) {
         // Show success toast
         (globalThis as any).addToast({
-          id: crypto.randomUUID(),
+          id: Date.now().toString(),
           message: result.message || `Request ${action}d successfully`,
           type: "success",
         });
@@ -118,7 +118,7 @@ export default function JoinRequests({
         console.log("Join requests reloaded");
       } else {
         (globalThis as any).addToast({
-          id: crypto.randomUUID(),
+          id: Date.now().toString(),
           message: result.message || `Failed to ${action} request`,
           type: "error",
         });
@@ -126,7 +126,7 @@ export default function JoinRequests({
     } catch (error) {
       console.error(`Error ${action}ing request:`, error);
       (globalThis as any).addToast({
-        id: crypto.randomUUID(),
+        id: Date.now().toString(),
         message: `Failed to ${action} request`,
         type: "error",
       });
