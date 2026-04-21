@@ -491,16 +491,17 @@ export default function NotificationsPage() {
   };
 
   const onHandleInvitation = async (
-    invitationId: number,
+    invitation: GroupInvitation,
     action: "accept" | "decline",
   ) => {
-    setProcessingId(invitationId);
-    const result = await handleGroupInvitation(invitationId, action);
+    setProcessingId(invitation.id);
+    const result = await handleGroupInvitation(invitation.id, action);
 
     if (result.success) {
       setInvitations((prev: GroupInvitation[]) =>
         prev.filter(
-          (invitation: GroupInvitation) => invitation.id !== invitationId,
+          (currentInvitation: GroupInvitation) =>
+            currentInvitation.id !== invitation.id,
         ),
       );
       (globalThis as any).addToast({
@@ -510,6 +511,10 @@ export default function NotificationsPage() {
         message: result.message || "Done",
         type: action === "accept" ? "success" : "info",
       });
+
+      if (action === "accept") {
+        router.push(`/groups/${invitation.group_id}`);
+      }
     }
 
     setProcessingId(null);
@@ -736,7 +741,7 @@ export default function NotificationsPage() {
                       <div className="flex gap-2 mt-3">
                         <button
                           onClick={() =>
-                            onHandleInvitation(invite.id, "accept")
+                            onHandleInvitation(invite, "accept")
                           }
                           disabled={processingId === invite.id}
                           className="flex-1 py-2 bg-green-500/10 text-green-500 text-xs font-bold rounded-lg hover:bg-green-500/20 disabled:opacity-50 flex items-center justify-center gap-1"
@@ -746,7 +751,7 @@ export default function NotificationsPage() {
                         </button>
                         <button
                           onClick={() =>
-                            onHandleInvitation(invite.id, "decline")
+                            onHandleInvitation(invite, "decline")
                           }
                           disabled={processingId === invite.id}
                           className="flex-1 py-2 bg-red-500/10 text-red-500 text-xs font-bold rounded-lg hover:bg-red-500/20 disabled:opacity-50 flex items-center justify-center gap-1"

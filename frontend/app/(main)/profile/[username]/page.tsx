@@ -1010,9 +1010,7 @@ export default function ProfilePage() {
         {/* ══ COVER + HEADER ══════════════════════════════════════ */}
         <div className="relative">
           {/* Animated cover */}
-          <div
-            className="profile-cover-wrapper h-44 md:h-52 w-full overflow-hidden relative"
-          >
+          <div className="profile-cover-wrapper h-44 md:h-52 w-full overflow-hidden relative">
             {/* Back button — overlaid on cover for visitor profiles */}
             {!isOwnProfile && (
               <div className="absolute top-4 left-4" style={{ zIndex: 10 }}>
@@ -1125,7 +1123,8 @@ export default function ProfilePage() {
               className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none"
               style={{
                 zIndex: 3,
-                background: "linear-gradient(to bottom, transparent, var(--background))",
+                background:
+                  "linear-gradient(to bottom, transparent, var(--background))",
               }}
             />
 
@@ -1226,6 +1225,11 @@ export default function ProfilePage() {
                     <span className="text-muted">Following</span>
                   </button>
                 </div>
+                {getField("aboutMe") && (
+                  <p className="text-sm text-foreground mt-3 max-w-lg break-words">
+                    {getField("aboutMe")}
+                  </p>
+                )}
               </div>
             </div>
 

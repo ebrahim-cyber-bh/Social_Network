@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { Users, Check, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { fetchGroupInvitations, handleGroupInvitation } from "@/lib/groups/api";
+import { toast } from "@/lib/utils";
 import { on, off } from "@/lib/ws/ws";
 
 interface Invitation {
@@ -15,15 +17,26 @@ interface Invitation {
 }
 
 export default function GroupInvitations() {
+  const router = useRouter();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
 
+  async function loadInvitations() {
+    const data = await fetchGroupInvitations();
+    if (data && data.success) {
+      setInvitations(data.invitations || []);
+    }
+    setLoading(false);
+  }
+
   useEffect(() => {
-    loadInvitations();
+    void (async () => {
+      await loadInvitations();
+    })();
 
     // Listen for new invitations via WebSocket
-    const handleNewInvitation = (data: any) => {
+    const handleNewInvitation = (data: { type?: string }) => {
       if (data.type === "group_invitation") {
         loadInvitations(); // Refresh invitations list
       }
@@ -43,35 +56,15 @@ export default function GroupInvitations() {
     };
   }, []);
 
-  const loadInvitations = async () => {
-    const data = await fetchGroupInvitations();
-    if (data && data.success) {
-      setInvitations(data.invitations || []);
-    }
-    setLoading(false);
-  };
-
-  const handleAccept = async (invitationId: number) => {
-    setProcessingId(invitationId);
-    const result = await handleGroupInvitation(invitationId, "accept");
+  const handleAccept = async (invitation: Invitation) => {
+    setProcessingId(invitation.id);
+    const result = await handleGroupInvitation(invitation.id, "accept");
 
     if (result.success) {
-      (globalThis as any).addToast({
-        id: Date.now().toString(),
-        title: "Invitation Accepted",
-        message: "You have joined the group!",
-        type: "success",
-        duration: 4000,
-      });
-      loadInvitations(); // Refresh list
+      toast("You have joined the group!", "success", "Invitation Accepted");
+      router.push(`/groups/${invitation.group_id}`);
     } else {
-      (globalThis as any).addToast({
-        id: Date.now().toString(),
-        title: "Error",
-        message: result.message || "Failed to accept invitation",
-        type: "error",
-        duration: 5000,
-      });
+      toast(result.message || "Failed to accept invitation", "error", "Error");
     }
     setProcessingId(null);
   };
@@ -81,22 +74,10 @@ export default function GroupInvitations() {
     const result = await handleGroupInvitation(invitationId, "decline");
 
     if (result.success) {
-      (globalThis as any).addToast({
-        id: Date.now().toString(),
-        title: "Invitation Declined",
-        message: "The invitation has been declined",
-        type: "info",
-        duration: 3000,
-      });
+      toast("The invitation has been declined", "info", "Invitation Declined");
       loadInvitations(); // Refresh list
     } else {
-      (globalThis as any).addToast({
-        id: Date.now().toString(),
-        title: "Error",
-        message: result.message || "Failed to decline invitation",
-        type: "error",
-        duration: 5000,
-      });
+      toast(result.message || "Failed to decline invitation", "error", "Error");
     }
     setProcessingId(null);
   };
@@ -140,7 +121,7 @@ export default function GroupInvitations() {
 
             <div className="flex gap-2">
               <button
-                onClick={() => handleAccept(invitation.id)}
+                onClick={() => handleAccept(invitation)}
                 disabled={processingId === invitation.id}
                 className="flex items-center gap-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >

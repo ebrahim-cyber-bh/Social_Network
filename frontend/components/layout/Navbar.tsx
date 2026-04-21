@@ -345,7 +345,7 @@ export default function Navbar({
   );
 
   return (
-    <div className="h-screen bg-background text-foreground flex flex-col md:flex-row overflow-hidden">
+    <div className="min-h-screen md:h-screen bg-background text-foreground flex flex-col md:flex-row md:overflow-hidden">
       {/* Mobile Header */}
       <header className="md:hidden sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl px-4 py-3 flex items-center justify-between">
         <button
@@ -463,7 +463,9 @@ export default function Navbar({
         </div>
       )}
 
-      <main className="flex-1 min-w-0 flex flex-col">{children}</main>
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+        {children}
+      </main>
     </div>
   );
 }
